@@ -1,0 +1,57 @@
+{
+  "tasks": [
+    {
+      "name": "step_1",
+      "type": "calculate",
+      "operation": "add",
+      "numbers": [
+        10,
+        20
+      ]
+    },
+    {
+      "name": "step_2",
+      "type": "print",
+      "content": "Hello from the engine!"
+    },
+    {
+      "name": "step_3",
+      "type": "http",
+      "method": "GET",
+      "url": "https://api.zippopotam.us/us/90210"
+    },
+    {
+      "name": "step_4",
+      "type": "calculate",
+      "operation": "mul",
+      "numbers": [
+        "$step_3.places.0.latitude",
+        2
+      ]
+    },
+    {
+      "name": "step_5",
+      "type": "print",
+      "content": "The latitude is $step_3.places.0.latitude degrees"
+    },
+    {
+      "name": "check_value",
+      "type": "condition",
+      "left": "$step_1",
+      "operator": ">",
+      "right": 25,
+      "then": "step_3",
+      "else": "step_4"
+    },
+    {
+      "name": "create_item",
+      "type": "http",
+      "method": "POST",
+      "url": "https://httpbin.org/post",
+      "body": {
+        "message": "Hello",
+        "value": "$step_1"
+      }
+    }
+  ]
+}
