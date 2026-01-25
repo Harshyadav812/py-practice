@@ -37,24 +37,36 @@ def do_condition(left, operator, right):
       return "Invalid argument"
     
 
-async def do_http(url, method="GET", body=None):
+async def do_http(url, method="GET", body=None, retries=0, retry_delay=1):
 
   async with httpx.AsyncClient() as client:
 
-    match(method):
-      case "GET":
-        response = await client.get(url)
-        return response.json()
-      case "POST":
-        response = await client.post(url, json=body)
-        return response.json()
+    last_exception = None
+    for attempt in range(retries+1):
+      try:
+        match(method):
+          case "GET":
+            response = await client.get(url)
+            return response.json()
+          case "POST":
+            response = await client.post(url, json=body)
+            return response.json()
+      
+      except Exception as e:
+        last_exception = e
+        if attempt < retries:
+          print(f"Request failed: {e}. Retrying in {retry_delay}!")
+          await asyncio.sleep(retry_delay)
+        else:
+          raise last_exception
+
       
 async def do_fetch_all(urls):
 
   async with httpx.AsyncClient() as client:
 
     tasks = [client.get(url) for url in urls]
-    responses = await asyncio.gather(*tasks)
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
 
     results  = []
     for response in responses:
@@ -64,6 +76,11 @@ async def do_fetch_all(urls):
         results.append(response.json())
 
     return results
+
+async def do_delay(seconds):
+  await asyncio.sleep(seconds)
+  return f"Waited {seconds} seconds"
+
 
 
 def get_value_from_path(workflow_results, path:str):

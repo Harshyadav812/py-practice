@@ -15,6 +15,11 @@
       "content": "Hello from the engine!"
     },
     {
+      "name": "wait_a_bit",
+      "type": "delay",
+      "seconds": 2
+    },
+    {
       "name": "step_3",
       "type": "http",
       "method": "GET",
