@@ -1,9 +1,89 @@
 # type: ignore
+import asyncio
+
 from fastapi import FastAPI, Body
-from tasks import do_print, do_calc, do_http, do_condition, resolve_all_variables
+from tasks import do_print, do_calc, do_http, do_fetch_all, do_condition, resolve_all_variables
 
 app = FastAPI()
 
+
+async def execute_task(clean_task, workflow_results):
+
+  match clean_task['type']: # type: ignore
+
+    case 'print':
+      return do_print(clean_task['content'])
+
+
+    case 'calculate':
+      return do_calc(clean_task['operation'], *clean_task['numbers'])
+
+
+    case 'http':
+      return await do_http(
+          clean_task['url'], 
+          clean_task.get('method', 'GET'), 
+          clean_task.get('body', None)
+        )
+    
+    case 'parallel':
+      urls = []
+      
+      for task in clean_task['tasks']:
+        print(task['url'])
+        urls.append(task['url'])
+
+      results = await do_fetch_all(urls)
+
+      return results
+          
+
+    case 'condition':
+      return do_condition(clean_task['left'], clean_task['operator'], clean_task['right'])          
+
+    case 'set':
+      return clean_task['value']
+    
+
+    case 'loop':
+
+      do_template = clean_task['do']
+      items = clean_task['items']
+
+      as_var = clean_task['as']
+
+      loop_results = []
+
+      for item in items:
+        workflow_results[as_var] = item
+
+        #check skipIf - skip this item
+        if 'skipIf' in clean_task:
+          skip_resolved = resolve_all_variables(workflow_results, clean_task['skipIf'])
+          should_skip = do_condition(skip_template['left'], skip_template['operator'], skip_template['right'])
+
+          if should_skip:
+            del workflow_results[as_var]
+            continue
+        
+        #check breakIf - stop the entire loop
+
+        if 'breakIf' in clean_task:
+          break_resolved = resolve_all_variables(workflow_results, clean_task['breakIf'])
+          should_break = do_condition(break_resolved['left'], break_resolved['operator'], break_resolved['right'])
+
+          if should_break:
+            del workflow_results[as_var]
+            break
+
+        resolved_do = resolve_all_variables(workflow_results, do_template, skip_keys={'do', 'skipIf', 'breakIf'})
+
+        res = await execute_task(resolved_do, workflow_results)
+            
+        loop_results.append(res)
+        del workflow_results[as_var]
+
+      return loop_results
 
 @app.post("/execute")
 async def execute_workflow(payload: dict = Body(...)):
@@ -14,29 +94,10 @@ async def execute_workflow(payload: dict = Body(...)):
 
   for task in tasks:
     try:
-      clean_task = resolve_all_variables(workflow_results, task)
+      clean_task = resolve_all_variables(workflow_results, task, skip_keys={'do', 'skipIf', 'breakIf'})
 
-      match clean_task['type']: # type: ignore
-
-        case 'print':
-          workflow_results[task['name']] = do_print(clean_task['content'])
-
-
-        case 'calculate':
-          workflow_results[task['name']] = do_calc(clean_task['operation'], *clean_task['numbers'])
-
-
-        case 'http':
-          workflow_results[task['name']] = await do_http(
-            clean_task['url'], 
-            clean_task.get('method', 'GET'), 
-            clean_task.get('body', None)
-            )
+      workflow_results[task['name']] = await execute_task(clean_task, workflow_results)
           
-
-        case 'condition':
-          workflow_results[task['name']] = do_condition(clean_task['left'], clean_task['operator'], clean_task['right'])
-
       workflow_log.append({
           "task": task['name'],
           "type": task['type'],

@@ -52,6 +52,34 @@
         "message": "Hello",
         "value": "$step_1"
       }
+    },
+    {
+      "name": "process_places",
+      "type": "loop",
+      "items": "$step_3.places",
+      "as": "current_item",
+      "do": {
+        "type": "print",
+        "content": "City: $current_item.state"
+      }
+    },
+    {
+      "name": "fetch_all",
+      "type": "parallel",
+      "tasks": [
+        {
+          "type": "http",
+          "url": "https://api1.com"
+        },
+        {
+          "type": "http",
+          "url": "https://api2.com"
+        },
+        {
+          "type": "http",
+          "url": "https://api3.com"
+        }
+      ]
     }
   ]
 }

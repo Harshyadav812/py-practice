@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 import re
 
 def do_print(content):
@@ -48,6 +49,21 @@ async def do_http(url, method="GET", body=None):
         response = await client.post(url, json=body)
         return response.json()
       
+async def do_fetch_all(urls):
+
+  async with httpx.AsyncClient() as client:
+
+    tasks = [client.get(url) for url in urls]
+    responses = await asyncio.gather(*tasks)
+
+    results  = []
+    for response in responses:
+      if isinstance(response, Exception):
+        results.append({"error": str(response)})
+      else:
+        results.append(response.json())
+
+    return results
 
 
 def get_value_from_path(workflow_results, path:str):
@@ -81,15 +97,19 @@ def get_value_from_path(workflow_results, path:str):
 
 
 
-def resolve_all_variables(workflow_results, task):
+def resolve_all_variables(workflow_results, task, skip_keys=None):
 
+  if skip_keys is None:
+    skip_keys = set()
+  
   #if it's a dict, look at every value inside it
   if isinstance(task, dict):
-    return {k: resolve_all_variables(workflow_results, v) for k, v in task.items()}
+    return {k: task[k] if k in skip_keys 
+            else resolve_all_variables(workflow_results, v, skip_keys) for k, v in task.items()}
   
   #if it's a list look at every item in the list
   if isinstance(task, list):
-    return [resolve_all_variables(workflow_results, item) for item in task]
+    return [resolve_all_variables(workflow_results, item, skip_keys) for item in task]
   
   #if it's a str, use get_value_from_path() function to revole the path
   if isinstance(task, str) and '$' in task:
