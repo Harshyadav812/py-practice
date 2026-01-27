@@ -1,6 +1,7 @@
-# type: ignore
 import asyncio
+from typing import Any
 import time
+from schemas import WorkflowPayload
 
 from fastapi import FastAPI, Body
 from tasks import do_print, do_calc, do_http, do_fetch_all, do_condition, do_delay, resolve_all_variables
@@ -10,7 +11,7 @@ app = FastAPI()
 
 async def execute_task(clean_task, workflow_results):
 
-  match clean_task['type']: # type: ignore
+  match clean_task['type']:
 
     case 'print':
       return do_print(clean_task['content'])
@@ -25,8 +26,10 @@ async def execute_task(clean_task, workflow_results):
           clean_task['url'], 
           clean_task.get('method', 'GET'), 
           clean_task.get('body', None),
-          clean_task.get('retries',0),
-          clean_task.get('retry_delay',1)
+          clean_task.get('headers', None),
+          clean_task.get('retries', 0),
+          clean_task.get('retry_delay', 1),
+          clean_task.get('timeout', 30)
         )
     
     case 'parallel':
@@ -41,7 +44,26 @@ async def execute_task(clean_task, workflow_results):
           
 
     case 'condition':
-      return do_condition(clean_task['left'], clean_task['operator'], clean_task['right'])          
+      result = do_condition(clean_task['left'], clean_task['operator'], clean_task['right'])          
+
+      if result:
+        branch_tasks = clean_task.get('then_do')
+      else:
+        branch_tasks = clean_task.get('else_do')
+
+      if branch_tasks:
+        if isinstance(branch_tasks, dict):
+          branch_tasks = [branch_tasks]
+        
+        branch_results = []
+        for task in branch_tasks:
+          resolved = resolve_all_variables(workflow_results, task)
+          res = await execute_task(resolved, workflow_results)
+          branch_results.append(res)
+        
+        return {"condition": result, "branch_results": branch_results}
+
+      return {"condition": result}
 
     case 'set':
       return clean_task['value']
@@ -104,15 +126,24 @@ async def execute_task(clean_task, workflow_results):
       return loop_results
 
 @app.post("/execute")
-async def execute_workflow(payload: dict = Body(...)):
-  workflow_results = {}
-  tasks = payload.get("tasks", [])
+async def execute_workflow(payload: WorkflowPayload):
+  SKIP_KEYS_BY_TYPE = {
+    'loop': {'do', 'skipIf', 'breakIf'},
+    'switch': {'cases'},
+    'condition': {'then_do', 'else_do'}
+  }
+
+  workflow_results: dict[str, Any] = {}
+  tasks = [task.model_dump(by_alias=True) for task in payload.tasks]
 
   workflow_log = []
 
   for task in tasks:
+    task_type = task.get('type')
+    skip_keys = SKIP_KEYS_BY_TYPE.get(task_type, set())
+  
     try:
-      clean_task = resolve_all_variables(workflow_results, task, skip_keys={'do', 'skipIf', 'breakIf', 'cases'})
+      clean_task = resolve_all_variables(workflow_results, task, skip_keys=skip_keys)
 
       workflow_results[task['name']] = await execute_task(clean_task, workflow_results)
           

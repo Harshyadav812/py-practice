@@ -5,57 +5,129 @@ import re
 def do_print(content):
   return content
 
-def do_calc(op='add', num1=1, num2=2):
+def do_calc(op: str = 'add', *args):
+  """Perform math operations on a list of numbers."""
+  if not args:
+    return 0
+  
+  # Convert all args to float for consistent math
+  try:
+    nums = [float(n) for n in args]
+  except (ValueError, TypeError) as e:
+    raise ValueError(f"Cannot convert to number: {args}. Error: {e}")
 
-  print(num1, num2)
   match op:
     case 'add':
-      return num1 + num2
+      total: float = 0.0
+      for num in nums:
+        total += num
+      return total
+
     case 'sub':
-      return num1 - num2
+      res = nums[0]
+      for num in nums[1:]:
+        res -= num
+      return res
+
     case 'mul':
-      return num1*num2
+      res = nums[0]
+      for num in nums[1:]:
+        res *= num
+      return res
+
     case 'divide':
-      return num1/num2
+      res = nums[0]
+      for num in nums[1:]:
+        if num == 0:
+          raise ValueError("Division by zero")
+        res /= num
+      return res
+    
+    case _:
+      raise ValueError(f"Unknown operation: {op}. Valid: add, sub, mul, divide")
     
 def do_condition(left, operator, right):
+  """Evaluate a condition. Attempts numeric comparison if both sides look like numbers."""
+  
+  # Try to convert to numbers for comparison if both look numeric
+  def try_numeric(val):
+    if isinstance(val, (int, float)):
+      return val
+    if isinstance(val, str):
+      try:
+        return float(val)
+      except ValueError:
+        return val
+    return val
+  
+  left_val = try_numeric(left)
+  right_val = try_numeric(right)
   
   match(operator):
     case '<':
-      return left < right
+      return left_val < right_val
     case '>':
-      return left > right
+      return left_val > right_val
     case '==':
-      return left == right
+      return left_val == right_val
     case '!=':
-      return left != right
+      return left_val != right_val
     case '>=':
-      return left >= right
+      return left_val >= right_val
     case '<=':
-      return left <= right
+      return left_val <= right_val
     case _:
-      return "Invalid argument"
+      raise ValueError(f"Invalid operator: {operator}. Valid: <, >, ==, !=, >=, <=")
     
 
-async def do_http(url, method="GET", body=None, retries=0, retry_delay=1):
-
-  async with httpx.AsyncClient() as client:
-
+async def do_http(url, method="GET", body=None, headers=None, retries=0, retry_delay=1, timeout=30):
+  """Make HTTP requests with retry support, headers, and timeout."""
+  
+  if headers is None:
+    headers = {}
+  
+  async with httpx.AsyncClient(timeout=timeout) as client:
     last_exception = None
-    for attempt in range(retries+1):
+    
+    for attempt in range(retries + 1):
       try:
-        match(method):
+        match(method.upper()):
           case "GET":
-            response = await client.get(url)
-            return response.json()
+            response = await client.get(url, headers=headers)
           case "POST":
-            response = await client.post(url, json=body)
-            return response.json()
+            response = await client.post(url, json=body, headers=headers)
+          case "PUT":
+            response = await client.put(url, json=body, headers=headers)
+          case "PATCH":
+            response = await client.patch(url, json=body, headers=headers)
+          case "DELETE":
+            response = await client.delete(url, headers=headers)
+          case _:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+        
+        # Handle non-JSON responses gracefully
+        content_type = response.headers.get('content-type', '')
+        if 'application/json' in content_type:
+          return response.json()
+        else:
+          return {
+            "status_code": response.status_code,
+            "text": response.text,
+            "headers": dict(response.headers)
+          }
+      
+      except httpx.TimeoutException as e:
+        last_exception = e
+        if attempt < retries:
+          print(f"Request timed out. Retrying in {retry_delay}s... (attempt {attempt + 1}/{retries + 1})")
+          await asyncio.sleep(retry_delay)
+        else:
+          raise ValueError(f"Request to {url} timed out after {retries + 1} attempts")
       
       except Exception as e:
         last_exception = e
         if attempt < retries:
-          print(f"Request failed: {e}. Retrying in {retry_delay}!")
+          print(f"Request failed: {e}. Retrying in {retry_delay}s... (attempt {attempt + 1}/{retries + 1})")
           await asyncio.sleep(retry_delay)
         else:
           raise last_exception
@@ -83,32 +155,61 @@ async def do_delay(seconds):
 
 
 
-def get_value_from_path(workflow_results, path:str):
+def get_value_from_path(workflow_results, path: str):
+  """Navigate nested data structures using dot notation.
+  
+  Examples:
+    $step_1 -> workflow_results['step_1']
+    $step_1.data.0.name -> workflow_results['step_1']['data'][0]['name']
+  """
   original_path = path
   if path.startswith("$"):
     path = path[1:]
   
   parts = path.split(".")
+  root_key = parts[0]
 
-  if parts[0] not in workflow_results:
-    raise ValueError(f"Variable {original_path} not found")
+  if root_key not in workflow_results:
+    available = list(workflow_results.keys())
+    raise ValueError(
+      f"Variable '{original_path}' not found. "
+      f"'{root_key}' doesn't exist. Available: {available}"
+    )
 
-  current_val = workflow_results.get(parts[0])
+  current_val = workflow_results.get(root_key)
 
-  for part in parts[1:]:
-    if isinstance(current_val, list) and part.isdigit():
-      try:
-        current_val = current_val[int(part)]
-      except IndexError:
-        raise ValueError(f"Variable {original_path} not found")
+  for i, part in enumerate(parts[1:], start=1):
+    current_path = ".".join(parts[:i+1])
+    
+    if isinstance(current_val, list):
+      if part.isdigit():
+        idx = int(part)
+        if idx >= len(current_val):
+          raise ValueError(
+            f"Variable '{original_path}' failed at '{current_path}': "
+            f"Index {idx} out of range (list has {len(current_val)} items)"
+          )
+        current_val = current_val[idx]
+      else:
+        raise ValueError(
+          f"Variable '{original_path}' failed at '{current_path}': "
+          f"Expected numeric index for list, got '{part}'"
+        )
     
     elif isinstance(current_val, dict):
       if part not in current_val:
-        raise ValueError(f"Variable {original_path} not found")
+        available = list(current_val.keys())
+        raise ValueError(
+          f"Variable '{original_path}' failed at '{current_path}': "
+          f"Key '{part}' not found. Available: {available}"
+        )
       current_val = current_val[part]
 
     else:
-      raise ValueError(f"Variable {original_path} not found")
+      raise ValueError(
+        f"Variable '{original_path}' failed at '{current_path}': "
+        f"Cannot access '{part}' on {type(current_val).__name__}"
+      )
     
   return current_val
 

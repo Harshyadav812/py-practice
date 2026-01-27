@@ -45,8 +45,14 @@
       "left": "$step_1",
       "operator": ">",
       "right": 25,
-      "then": "step_3",
-      "else": "step_4"
+      "then_do": {
+        "type": "print",
+        "content": "Value is greater than 25!"
+      },
+      "else_do": {
+        "type": "print",
+        "content": "Value is 25 or less"
+      }
     },
     {
       "name": "create_item",
