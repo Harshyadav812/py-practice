@@ -89,7 +89,6 @@ def do_condition(left, operator, right):
 
 async def do_http(url, method="GET", body=None, headers=None, retries=0, retry_delay=1):
     """Make HTTP requests with retry support, headers, and timeout."""
-
     if headers is None:
         headers = {}
 
@@ -110,7 +109,8 @@ async def do_http(url, method="GET", body=None, headers=None, retries=0, retry_d
                     case "DELETE":
                         response = await client.delete(url, headers=headers)
                     case _:
-                        raise ValueError(f"Unsupported HTTP method: {method}")
+                        msg = f"Unsupported HTTP method: {method}"
+                        raise ValueError(msg)
 
                 # Handle non-JSON responses gracefully
                 content_type = response.headers.get("content-type", "")
@@ -131,9 +131,8 @@ async def do_http(url, method="GET", body=None, headers=None, retries=0, retry_d
                     )
                     await asyncio.sleep(retry_delay)
                 else:
-                    raise ValueError(
-                        f"Request to {url} timed out after {retries + 1} attempts"
-                    )
+                    msg = f"Request to {url} timed out after {retries + 1} attempts"
+                    raise ValueError(msg)
 
             except Exception as e:
                 last_exception = e
@@ -144,6 +143,7 @@ async def do_http(url, method="GET", body=None, headers=None, retries=0, retry_d
                     await asyncio.sleep(retry_delay)
                 else:
                     raise last_exception
+    return None
 
 
 async def do_fetch_all(urls):
@@ -167,103 +167,103 @@ async def do_delay(seconds):
 
 
 def get_value_from_path(workflow_results, path: str):
-    """Navigate nested data structures using dot notation.
+    """
+    Navigate nested data structures using dot notation or brackets.
 
-    Examples:
-      $step_1 -> workflow_results['step_1']
-      $step_1.data.0.name -> workflow_results['step_1']['data'][0]['name']
+    Matches:
+      $Node.prop
+      $'Node Name'.prop
+      $Node['prop']
+      $Node[0]
+    """
+    original_path = path
+    path = path.removeprefix("$")
 
-    """  # noqa: D213
-    original_path: str = path
+    # 1. Parse tokens ("Lenient Parser")
+    # Matches: "Quoted String" OR Word/Digits
+    # This effectively ignores dots and brackets, capturing only the keys/indices
+    parts = re.findall(r"['\"]([^'\"]+)['\"]|([\w]+)", path)
 
-    path: str = path.removeprefix("$")
+    # Flatten matches from [('Key', ''), ('', '0')] to ['Key', '0']
+    clean_parts = [p[0] or p[1] for p in parts]
 
-    parts: list[str] = path.split(".")
-    root_key: str = parts[0]
+    if not clean_parts:
+        return path
 
-    if root_key not in workflow_results:
-        available = list(workflow_results.keys())
-        msg = (
-            f"Variable '{original_path}' not found. "
-            f"'{root_key}' doesn't exist. Available: {available}"
-        )
+    # 2. Traverse
+    current_val = workflow_results
+    root_node = clean_parts[0]
+
+    if root_node not in current_val:
+        available = list(current_val.keys())
+        msg = f"Variable '{root_node}' not found. Available: {available}"
         raise ValueError(msg)
 
-    current_val = workflow_results.get(root_key)
+    current_val = current_val[root_node]
 
-    for i, part in enumerate(parts[1:], start=1):
-        current_path = ".".join(parts[: i + 1])
-
-        if isinstance(current_val, list):
-            if part.isdigit():
-                idx = int(part)
-                if idx >= len(current_val):
-                    msg = (
-                        f"Variable '{original_path}' failed at '{current_path}': "
-                        f"Index {idx} out of range (list has {len(current_val)} items)"
-                    )
-                    raise ValueError(msg)
-                current_val = current_val[idx]
+    for part in clean_parts[1:]:
+        # Handle Dictionary Access
+        if isinstance(current_val, dict):
+            if part in current_val:
+                current_val = current_val[part]
+                continue
             else:
-                msg = (
-                    f"Variable '{original_path}' failed at '{current_path}': "
-                    f"Expected numeric index for list, got '{part}'"
-                )
+                msg = f"Key '{part}' not found in {original_path}"
                 raise ValueError(msg)
 
-        elif isinstance(current_val, dict):
-            if part not in current_val:
-                available = list(current_val.keys())
-                msg = (
-                    f"Variable '{original_path}' failed at '{current_path}': "
-                    f"Key '{part}' not found. Available: {available}"
-                )
+        # Handle List Access (Array Index)
+        elif isinstance(current_val, list) and part.isdigit():
+            try:
+                current_val = current_val[int(part)]
+                continue
+            except IndexError:
+                msg = f"Index {part} out of bounds in {original_path}"
                 raise ValueError(msg)
-            current_val = current_val[part]
 
-        else:
-            msg = (
-                f"Variable '{original_path}' failed at '{current_path}': "
-                f"Cannot access '{part}' on {type(current_val).__name__}"
-            )
-            raise ValueError(msg)
+        msg = f"Cannot access '{part}' on {type(current_val)} in {original_path}"
+        raise ValueError(msg)
 
     return current_val
 
 
-def resolve_all_variables(workflow_results, task, skip_keys=None):
-    if skip_keys is None:
-        skip_keys = set()
-
-    # if it's a dict, look at every value inside it
+def resolve_all_variables(workflow_results, task):
+    """Recursively resolve $ variables in a task configuration."""
+    # 1. Recursive Dict Resolution
     if isinstance(task, dict):
-        return {
-            k: task[k]
-            if k in skip_keys
-            else resolve_all_variables(workflow_results, v, skip_keys)
-            for k, v in task.items()
-        }
+        return {k: resolve_all_variables(workflow_results, v) for k, v in task.items()}
 
-    # if it's a list look at every item in the list
+    # 2. Recursive List Resolution
     if isinstance(task, list):
-        return [
-            resolve_all_variables(workflow_results, item, skip_keys) for item in task
-        ]
+        return [resolve_all_variables(workflow_results, item) for item in task]
 
-    # if it's a str, use get_value_from_path() function to revole the path
+    # 3. String Resolution
     if isinstance(task, str) and "$" in task:
-        if re.fullmatch(r"\$[\w.]+", task):
+        # Regex Breakdown:
+        # \$(?: ... )             -> Start with $
+        # (?:['"][^'"]+['"]|[\w]+)-> Root (Quoted Name OR SimpleName)
+        # (?: ... )*              -> Property Chain (0 or more):
+        #   (?:\.[\w]+)              -> Dot property (.name)
+        #   |(?:\[['"][^'"]+['"]\])  -> Bracket String Key (['key'])
+        #   |(?:\[\d+\])             -> Bracket Number Index ([0]) <--- Added this
+
+        pattern = r"\$(?:(?:['\"][^'\"]+['\"])|(?:[\w]+))(?:(?:\.[\w]+)|(?:\[['\"][^'\"]+['\"]\])|(?:\[\d+\]))*"
+
+        # Case A: Strict Variable (Return raw type, e.g., int, list)
+        if re.fullmatch(pattern, task):
             return get_value_from_path(workflow_results, task)
 
+        # Case B: Template String (Replace inside text, force string)
         else:
 
             def resolve_template_string(match):
-                var_path = match.group(0)
-                resolved = get_value_from_path(workflow_results, var_path)
+                try:
+                    var_path = match.group(0)
+                    resolved = get_value_from_path(workflow_results, var_path)
+                    return str(resolved)
+                except ValueError:
+                    # Keep original text if resolution fails (e.g. "$100 USD")
+                    return match.group(0)
 
-                return str(resolved)
+            return re.sub(pattern, resolve_template_string, task)
 
-            return re.sub(r"\$[\w.]+", resolve_template_string, task)
-
-    # otherwise just return the task, as is
     return task

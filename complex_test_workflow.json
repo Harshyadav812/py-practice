@@ -1,0 +1,169 @@
+{
+  "name": "Public API Data Pipeline",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Start",
+      "type": "manual_trigger",
+      "position": [0, 200],
+      "parameters": {}
+    },
+    {
+      "id": "2",
+      "name": "Fetch Random User",
+      "type": "http",
+      "position": [200, 200],
+      "parameters": {
+        "url": "https://randomuser.me/api/",
+        "method": "GET"
+      }
+    },
+    {
+      "id": "3",
+      "name": "Extract User Data",
+      "type": "set",
+      "position": [400, 200],
+      "parameters": {
+        "value": {
+          "name": "$'Fetch Random User'.results.0.name.first",
+          "country": "$'Fetch Random User'.results.0.location.country",
+          "email": "$'Fetch Random User'.results.0.email",
+          "age": "$'Fetch Random User'.results.0.dob.age"
+        }
+      }
+    },
+    {
+      "id": "4",
+      "name": "Check Age",
+      "type": "condition",
+      "position": [600, 200],
+      "parameters": {
+        "left": "$'Fetch Random User'.results.0.dob.age",
+        "operator": ">",
+        "right": 30
+      }
+    },
+    {
+      "id": "5",
+      "name": "Senior Path - Fetch Quote",
+      "type": "http",
+      "position": [800, 100],
+      "parameters": {
+        "url": "https://dummyjson.com/quotes/random",
+        "method": "GET"
+      }
+    },
+    {
+      "id": "6",
+      "name": "Junior Path - Fetch Joke",
+      "type": "http",
+      "position": [800, 300],
+      "parameters": {
+        "url": "https://official-joke-api.appspot.com/random_joke",
+        "method": "GET"
+      }
+    },
+    {
+      "id": "7",
+      "name": "Senior Result",
+      "type": "set",
+      "position": [1000, 100],
+      "parameters": {
+        "value": {
+          "user": "$'Extract User Data'",
+          "category": "Senior (30+)",
+          "message": "Wisdom quote: $'Senior Path - Fetch Quote'.quote"
+        }
+      }
+    },
+    {
+      "id": "8",
+      "name": "Junior Result",
+      "type": "set",
+      "position": [1000, 300],
+      "parameters": {
+        "value": {
+          "user": "$'Extract User Data'",
+          "category": "Junior (under 30)",
+          "joke_setup": "$'Junior Path - Fetch Joke'.setup",
+          "joke_punchline": "$'Junior Path - Fetch Joke'.punchline"
+        }
+      }
+    },
+    {
+      "id": "9",
+      "name": "Print Senior",
+      "type": "print",
+      "position": [1200, 100],
+      "parameters": {}
+    },
+    {
+      "id": "10",
+      "name": "Print Junior",
+      "type": "print",
+      "position": [1200, 300],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {"node": "Fetch Random User", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Fetch Random User": {
+      "main": [
+        [
+          {"node": "Extract User Data", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Extract User Data": {
+      "main": [
+        [
+          {"node": "Check Age", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Check Age": {
+      "main": [
+        [
+          {"node": "Senior Path - Fetch Quote", "type": "main", "index": 0}
+        ],
+        [
+          {"node": "Junior Path - Fetch Joke", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Senior Path - Fetch Quote": {
+      "main": [
+        [
+          {"node": "Senior Result", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Junior Path - Fetch Joke": {
+      "main": [
+        [
+          {"node": "Junior Result", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Senior Result": {
+      "main": [
+        [
+          {"node": "Print Senior", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Junior Result": {
+      "main": [
+        [
+          {"node": "Print Junior", "type": "main", "index": 0}
+        ]
+      ]
+    }
+  }
+}
