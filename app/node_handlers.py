@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from tasks import do_calc, do_condition, do_http, do_print
+from .tasks import do_calc, do_condition, do_http, do_print
 
 if TYPE_CHECKING:
     from workflow_engine import WorkflowEngine

@@ -3,20 +3,20 @@ from typing import Any
 
 import httpx
 
-from node_handlers import N8N_TYPE_MAPPING, SIMPLE_HANDLERS
-from schemas import ConnectionTarget, Node, WorkflowPayload
-from tasks import resolve_all_variables
+from app.node_handlers import N8N_TYPE_MAPPING, SIMPLE_HANDLERS
+from app.schemas.nodes import ConnectionTarget, Node, WorkflowPayload
+from app.tasks import resolve_all_variables
 
 
 class WorkflowEngine:
     def __init__(self, workflow: WorkflowPayload):
         self.workflow: WorkflowPayload = workflow
         self.node_map: dict[str, Node] = workflow.nodes_by_names
-        self.execution_state = {}
+        self.execution_state: dict[str, Any] = {}
         # Queue stores tuples: (node_name, input_data)
-        self.queue = deque()
+        self.queue: deque = deque()
 
-        self.visited = set()
+        self.visited: set[Node] = set()
 
         self.start_node_name = next(
             (n.name for n in self.workflow.nodes if "manual_trigger" in n.type), None

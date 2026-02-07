@@ -1,96 +1,108 @@
 {
-  "tasks": [
+  "name": "API Test Workflow",
+  "nodes": [
     {
-      "name": "step_1",
-      "type": "calculate",
-      "operation": "add",
-      "numbers": [
-        10,
-        20
-      ]
+      "id": "1",
+      "name": "Start",
+      "type": "manual_trigger",
+      "position": [
+        100,
+        100
+      ],
+      "parameters": {}
     },
     {
-      "name": "step_2",
-      "type": "print",
-      "content": "Hello from the engine!"
-    },
-    {
-      "name": "wait_a_bit",
-      "type": "delay",
-      "seconds": 2
-    },
-    {
-      "name": "step_3",
+      "id": "2",
+      "name": "Fetch User",
       "type": "http",
-      "method": "GET",
-      "url": "https://api.zippopotam.us/us/90210"
+      "position": [
+        300,
+        100
+      ],
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/users/1",
+        "method": "GET"
+      }
     },
     {
-      "name": "step_4",
-      "type": "calculate",
-      "operation": "mul",
-      "numbers": [
-        "$step_3.places.0.latitude",
-        2
-      ]
-    },
-    {
-      "name": "step_5",
-      "type": "print",
-      "content": "The latitude is $step_3.places.0.latitude degrees"
-    },
-    {
-      "name": "check_value",
+      "id": "3",
+      "name": "Check City",
       "type": "condition",
-      "left": "$step_1",
-      "operator": ">",
-      "right": 25,
-      "then_do": {
-        "type": "print",
-        "content": "Value is greater than 25!"
-      },
-      "else_do": {
-        "type": "print",
-        "content": "Value is 25 or less"
+      "position": [
+        500,
+        100
+      ],
+      "parameters": {
+        "left": "$'Fetch User'.address.city",
+        "operator": "==",
+        "right": "Gwenborough"
       }
     },
     {
-      "name": "create_item",
-      "type": "http",
-      "method": "POST",
-      "url": "https://httpbin.org/post",
-      "body": {
-        "message": "Hello",
-        "value": "$step_1"
+      "id": "4",
+      "name": "Success Block",
+      "type": "print",
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "content": "User found! Name is: $'Fetch User'.name"
       }
     },
     {
-      "name": "process_places",
-      "type": "loop",
-      "items": "$step_3.places",
-      "as": "current_item",
-      "do": {
-        "type": "print",
-        "content": "City: $current_item.state"
+      "id": "5",
+      "name": "Error Block",
+      "type": "print",
+      "position": [
+        700,
+        200
+      ],
+      "parameters": {
+        "content": "City mismatch. Got: $'Fetch User'.address.city"
       }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Fetch User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    {
-      "name": "fetch_all",
-      "type": "parallel",
-      "tasks": [
-        {
-          "type": "http",
-          "url": "https://api1.com"
-        },
-        {
-          "type": "http",
-          "url": "https://api2.com"
-        },
-        {
-          "type": "http",
-          "url": "https://api3.com"
-        }
+    "Fetch User": {
+      "main": [
+        [
+          {
+            "node": "Check City",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check City": {
+      "main": [
+        [
+          {
+            "node": "Success Block",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Block",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
-  ]
+  }
 }
