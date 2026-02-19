@@ -126,7 +126,23 @@ async def handle_switch(
 async def handle_merge(
     params: dict, input_data: Any, engine: WorkflowEngine
 ) -> tuple[Any, int]:
-    """Merge node - combines data from multiple inputs."""
+    """Merge node - combines data from multiple incoming branches."""
+    mode = params.get("mode", "append")
+
+    # we currently have only 'append' mode, but n8n allows mutlitple
+    # e.g. "Combine by position", "Combine by filed", "Choose branch"
+    if mode == "append":
+        # Flatten the list in case the incoming branches returned list themselves
+        flattened = []
+        if isinstance(input_data, list):
+            for item in input_data:
+                if isinstance(item, list):
+                    flattened.extend(item)
+                else:
+                    flattened.append(item)
+            return flattened, 0
+
+    # Default: just return the list of collected inputs
     return input_data, 0
 
 

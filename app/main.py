@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api.deps import CurrentUser
@@ -7,7 +9,18 @@ from app.schemas.nodes import WorkflowPayload
 from app.schemas.workflow import WorkflowRead
 from app.workflow_engine import WorkflowEngine
 
-app = FastAPI()
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/execute", response_model=WorkflowRead)
@@ -26,9 +39,7 @@ app.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
 app.include_router(credentials.router, prefix="/credentials", tags=["credentials"])
 
 
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
-
-
 if __name__ == "__main__":
-    create_db_and_tables()
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

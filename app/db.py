@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from sqlmodel import SQLModel, create_engine  # noqa: F401
 
-from app.models import credentials, users  # noqa: F401
+from app.models import credentials, users, workflow  # noqa: F401
 
 load_dotenv()
 

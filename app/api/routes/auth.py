@@ -36,7 +36,7 @@ def login(
 ):
     # Authenticate
     statement = select(User).where(User.email == form_data.username)
-    user = session.exec(statement).one()
+    user = session.exec(statement).first()
 
     if not user or not security.verify_password(
         form_data.password, user.hashed_password
