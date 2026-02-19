@@ -8,9 +8,10 @@ if TYPE_CHECKING:
     from app.models.users import User
 
 
-class Credentials(SQLModel, table=True):
+class Credential(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(index=True)
+    type: str
     # This stores the ENCRYPTED string (garbage text) produced by CipherService
     encrypted_data: str
 

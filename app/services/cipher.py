@@ -5,15 +5,14 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+from config import settings
+
 
 class CipherService:
     def __init__(self, master_key: str | None = None):
-        # 1. Fix: Make master_key optional in signature so logic works
-        self.master_key = master_key or os.environ.get("SENTIENT_FLOW_ENCRYPTION_KEY")
+        self.master_key = master_key or settings.encryption_key.get_secret_value()
         if not self.master_key:
-            raise ValueError(
-                "SENTIENT_FLOW_ENCRYPTION_KEY environment variable is not set"
-            )
+            raise ValueError("Encryption key is not set in configuration")
 
     def _get_fernet(self, salt: bytes) -> Fernet:
         kdf = PBKDF2HMAC(
@@ -22,7 +21,7 @@ class CipherService:
             salt=salt,
             iterations=100_000,  # 2. Note: This is computationally expensive
         )
-        key = base64.urlsafe_b64encode(kdf.derive(self.master_key.encode()))  # ty:ignore[possibly-missing-attribute]
+        key = base64.urlsafe_b64encode(kdf.derive(self.master_key.encode()))
         return Fernet(key)
 
     def encrypt(self, data: str) -> str:

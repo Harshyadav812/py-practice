@@ -1,3 +1,5 @@
 from app.models.workflow import Workflow
 
-__all__ = ["Workflow"]
+from .credentials import Credential
+
+__all__ = ["Credential", "Workflow"]

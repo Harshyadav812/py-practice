@@ -16,7 +16,7 @@ class WorkflowEngine:
         # Queue stores tuples: (node_name, input_data)
         self.queue: deque = deque()
 
-        self.visited: set[Node] = set()
+        self.visited = set()
 
         self.start_node_name = next(
             (n.name for n in self.workflow.nodes if "manual_trigger" in n.type), None

@@ -7,7 +7,7 @@ from sqlmodel import Field, Relationship
 from app.schemas.users import UserBase
 
 if TYPE_CHECKING:
-    from app.models.credentials import Credentials
+    from app.models.credentials import Credential
     from app.models.workflow import Workflow
 
 
@@ -24,6 +24,6 @@ class User(UserBase, table=True):
     workflows: list["Workflow"] = Relationship(
         back_populates="owner", cascade_delete=True
     )
-    credentials: list["Credentials"] = Relationship(
+    credentials: list["Credential"] = Relationship(
         back_populates="owner", cascade_delete=True
     )

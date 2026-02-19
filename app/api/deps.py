@@ -6,9 +6,9 @@ from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
+from app.core.config import settings
 from app.db import engine
 from app.models.users import User
-from config import settings
 
 reusable_oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -28,7 +28,7 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         payload = jwt.decode(
             token,
             settings.secret_key.get_secret_value(),
-            algorithm=settings.algorithm,
+            algorithms=[settings.algorithm],
         )
         token_data = payload.get("sub")
 

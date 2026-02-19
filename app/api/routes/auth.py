@@ -13,7 +13,7 @@ from app.schemas.users import UserCreate, UserRead
 router = APIRouter()
 
 
-@router.get("/register", response_model=UserRead)
+@router.post("/register", response_model=UserRead)
 def register(user_in: UserCreate, session: SessionDep):
     # Check if email exists
     statement = select(User).where(User.email == user_in.email)
