@@ -1,0 +1,251 @@
+{
+  "name": "Full Node Test Workflow",
+  "nodes": [
+    {
+      "id": "trigger-1",
+      "name": "Start",
+      "type": "manual_trigger",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {}
+    },
+    {
+      "id": "set-1",
+      "name": "Set Test Data",
+      "type": "set",
+      "typeVersion": 1,
+      "position": [350, 300],
+      "parameters": {
+        "value": {
+          "username": "harsh",
+          "score": 85,
+          "items": ["apple", "banana", "cherry"],
+          "active": true
+        }
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "Double Score",
+      "type": "code",
+      "typeVersion": 1,
+      "position": [600, 300],
+      "parameters": {
+        "expression": "input['score'] * 2 if isinstance(input, dict) else input"
+      }
+    },
+    {
+      "id": "calc-1",
+      "name": "Add Bonus",
+      "type": "calculate",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "parameters": {
+        "operation": "add",
+        "numbers": [170, 30]
+      }
+    },
+    {
+      "id": "if-1",
+      "name": "Score Check",
+      "type": "if",
+      "typeVersion": 1,
+      "position": [1100, 300],
+      "parameters": {
+        "left": "$'Add Bonus'",
+        "operator": ">=",
+        "right": "100"
+      }
+    },
+    {
+      "id": "print-true",
+      "name": "High Score",
+      "type": "print",
+      "typeVersion": 1,
+      "position": [1400, 150],
+      "parameters": {
+        "content": "Excellent! Score is above 100!"
+      }
+    },
+    {
+      "id": "print-false",
+      "name": "Low Score",
+      "type": "print",
+      "typeVersion": 1,
+      "position": [1400, 450],
+      "parameters": {
+        "content": "Score is below 100, keep trying!"
+      }
+    },
+    {
+      "id": "template-1",
+      "name": "Result Message",
+      "type": "text_template",
+      "typeVersion": 1,
+      "position": [1650, 150],
+      "parameters": {
+        "template": "Hello $'Set Test Data'.username! Your final score is $'Add Bonus'. Result: $'High Score'"
+      }
+    },
+    {
+      "id": "http-1",
+      "name": "Fetch API",
+      "type": "http",
+      "typeVersion": 1,
+      "position": [350, 600],
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "method": "GET",
+        "timeout": 30
+      }
+    },
+    {
+      "id": "delay-1",
+      "name": "Wait 2s",
+      "type": "delay",
+      "typeVersion": 1,
+      "position": [600, 600],
+      "parameters": {
+        "seconds": 2
+      }
+    },
+    {
+      "id": "loop-1",
+      "name": "Loop Items",
+      "type": "loop",
+      "typeVersion": 1,
+      "position": [850, 600],
+      "parameters": {
+        "listExpression": "$'Set Test Data'.items",
+        "maxIterations": 10
+      }
+    },
+    {
+      "id": "merge-1",
+      "name": "Merge Results",
+      "type": "merge",
+      "typeVersion": 1,
+      "position": [1100, 600],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "switch-1",
+      "name": "Status Router",
+      "type": "switch",
+      "typeVersion": 1,
+      "position": [1400, 600],
+      "parameters": {
+        "value": "$'Set Test Data'.active",
+        "cases": ["True", "False"]
+      }
+    },
+    {
+      "id": "print-active",
+      "name": "Active Path",
+      "type": "print",
+      "typeVersion": 1,
+      "position": [1650, 500],
+      "parameters": {
+        "content": "User is ACTIVE"
+      }
+    },
+    {
+      "id": "print-inactive",
+      "name": "Inactive Path",
+      "type": "print",
+      "typeVersion": 1,
+      "position": [1650, 700],
+      "parameters": {
+        "content": "User is INACTIVE"
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          { "node": "Set Test Data", "type": "main", "index": 0 },
+          { "node": "Fetch API", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Set Test Data": {
+      "main": [
+        [
+          { "node": "Double Score", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Double Score": {
+      "main": [
+        [
+          { "node": "Add Bonus", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Add Bonus": {
+      "main": [
+        [
+          { "node": "Score Check", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Score Check": {
+      "main": [
+        [
+          { "node": "High Score", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Low Score", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "High Score": {
+      "main": [
+        [
+          { "node": "Result Message", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch API": {
+      "main": [
+        [
+          { "node": "Wait 2s", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Wait 2s": {
+      "main": [
+        [
+          { "node": "Loop Items", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Loop Items": {
+      "main": [
+        [
+          { "node": "Merge Results", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          { "node": "Status Router", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Status Router": {
+      "main": [
+        [
+          { "node": "Active Path", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Inactive Path", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  }
+}

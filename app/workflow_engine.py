@@ -224,14 +224,24 @@ class WorkflowEngine:
                 self.execution_state[current_node_name] = execution_result["result"]
                 output_index = execution_result["output_index"]
 
+                # Detect "soft" errors (handler returned error dict instead of raising)
+                result_data = execution_result["result"]
+                is_error_result = (
+                    isinstance(result_data, dict)
+                    and "error" in result_data
+                    and len(result_data) <= 3  # noqa: PLR2004
+                )
+
+                node_status = "error" if is_error_result else "success"
+
                 # Send node end event with partial result
                 yield (
                     json.dumps(
                         {
                             "type": "node_end",
                             "node": current_node_name,
-                            "status": "success",
-                            "result": execution_result["result"],
+                            "status": node_status,
+                            "result": result_data,
                         }
                     )
                     + "\n"

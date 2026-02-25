@@ -225,12 +225,37 @@ async def handle_text_template(
     return result, 0
 
 
+def _resolve_llm_api_key(params: dict, engine: WorkflowEngine) -> str:
+    """Resolve API key from params or from a saved credential (by name)."""
+    # 1. Direct API key in params
+    api_key = params.get("api_key", "")
+    if api_key:
+        return api_key
+
+    # 2. Look up credential by ID (UUID sent from frontend dropdown)
+    credential_id = params.get("credential", "")
+    if credential_id and engine.session:
+        try:
+            cred_data = engine._load_credential(str(credential_id))  # noqa: SLF001
+            return (
+                cred_data.get("api_key", "")
+                or cred_data.get("apiKey", "")
+                or cred_data.get("token", "")
+                or cred_data.get("key", "")
+                or ""
+            )
+        except ValueError:
+            return ""
+
+    return ""
+
+
 async def handle_llm_chat(
     params: dict, input_data: Any, engine: WorkflowEngine
 ) -> tuple[Any, int]:
     """LLM Chat node — send messages to any LLM provider."""
     provider = params.get("provider", "openai")
-    api_key = params.get("api_key", "")
+    api_key = _resolve_llm_api_key(params, engine)
     model = params.get("model") or None
     temperature = float(params.get("temperature", 0.7))
     max_tokens = int(params.get("max_tokens", 1024))
@@ -267,7 +292,7 @@ async def handle_llm_classify(
 ) -> tuple[Any, int]:
     """LLM Classify node — classify text into categories using an LLM."""
     provider = params.get("provider", "openai")
-    api_key = params.get("api_key", "")
+    api_key = _resolve_llm_api_key(params, engine)
     model = params.get("model") or None
     base_url = params.get("base_url") or None
 
@@ -316,7 +341,7 @@ async def handle_llm_summarize(
 ) -> tuple[Any, int]:
     """LLM Summarize node — summarize text using an LLM."""
     provider = params.get("provider", "openai")
-    api_key = params.get("api_key", "")
+    api_key = _resolve_llm_api_key(params, engine)
     model = params.get("model") or None
     base_url = params.get("base_url") or None
     max_length = params.get("max_length", "2-3 sentences")

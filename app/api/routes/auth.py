@@ -47,7 +47,7 @@ def login(
         raise HTTPException(status_code=400, detail="Inactive user")
 
     # Create Token
-    access_token_expires = timedelta(minutes=30)
+    access_token_expires = timedelta(minutes=1440)
     access_token = auth.create_access_token(
         subject=user.id, expires_delta=access_token_expires
     )

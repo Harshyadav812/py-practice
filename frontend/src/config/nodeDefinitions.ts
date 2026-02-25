@@ -8,7 +8,7 @@ import {
 // TYPE DEFINITIONS
 // =============================================================================
 
-export type PropertyType = 'string' | 'number' | 'boolean' | 'options' | 'json' | 'json-array' | 'code';
+export type PropertyType = 'string' | 'number' | 'boolean' | 'options' | 'json' | 'json-array' | 'code' | 'credential';
 
 export type Category = 'trigger' | 'action' | 'logic' | 'output' | 'ai';
 
@@ -576,12 +576,19 @@ export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
       },
       {
         name: 'api_key',
-        displayName: 'API Key',
+        displayName: 'API Key (direct)',
         type: 'string',
         default: '',
-        required: true,
         placeholder: 'sk-...',
-        description: 'API key for the provider. Alternatively, attach a Credential to this node for encrypted key storage.',
+        description: 'Paste the API key directly, OR use Credential ID below for encrypted storage. One of the two is required.',
+      },
+      {
+        name: 'credential',
+        displayName: 'Credential',
+        type: 'credential',
+        default: '',
+        placeholder: 'Select a saved credential',
+        description: 'Choose a saved credential containing your API key. Alternatively, paste the key directly above.',
       },
       {
         name: 'model',
@@ -662,12 +669,19 @@ export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
       },
       {
         name: 'api_key',
-        displayName: 'API Key',
+        displayName: 'API Key (direct)',
         type: 'string',
         default: '',
-        required: true,
         placeholder: 'sk-...',
-        description: 'API key for the provider.',
+        description: 'Paste API key directly, or use Credential ID below.',
+      },
+      {
+        name: 'credential',
+        displayName: 'Credential',
+        type: 'credential',
+        default: '',
+        placeholder: 'Select a saved credential',
+        description: 'Choose a saved credential containing your API key.',
       },
       {
         name: 'model',
@@ -729,12 +743,19 @@ export const NODE_DEFINITIONS: Record<string, NodeDefinition> = {
       },
       {
         name: 'api_key',
-        displayName: 'API Key',
+        displayName: 'API Key (direct)',
         type: 'string',
         default: '',
-        required: true,
         placeholder: 'sk-...',
-        description: 'API key for the provider.',
+        description: 'Paste API key directly, or use Credential ID below.',
+      },
+      {
+        name: 'credential',
+        displayName: 'Credential',
+        type: 'credential',
+        default: '',
+        placeholder: 'Select a saved credential',
+        description: 'Choose a saved credential containing your API key.',
       },
       {
         name: 'model',

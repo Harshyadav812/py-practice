@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { X, Trash2, Plus, Code, List } from 'lucide-react';
 import { NODE_DEFINITIONS, validateNodeParams, type ValidationError } from '@/config/nodeDefinitions';
+import { getCredentials } from '@/lib/api';
 
 export function PropertiesPanel() {
   const { selectedNode, updateNodeData, removeNode, selectNode } =
@@ -10,6 +11,12 @@ export function PropertiesPanel() {
   const [isRawMode, setIsRawMode] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
+  const [credentials, setCredentials] = useState<{ id: string; name: string; type: string }[]>([]);
+
+  // Fetch user's credentials for the credential dropdown
+  useEffect(() => {
+    getCredentials().then(setCredentials).catch(() => setCredentials([]));
+  }, []);
 
   const data = selectedNode?.data;
   const params = (data?.parameters || {}) as Record<string, unknown>;
@@ -248,6 +255,25 @@ export function PropertiesPanel() {
                         {prop.options?.map((opt) => (
                           <option key={String(opt.value)} value={String(opt.value)}>
                             {opt.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Credential (dropdown fetched from API) */}
+                    {prop.type === 'credential' && (
+                      <select
+                        value={String(value || '')}
+                        onChange={(e) => handleParamChange(prop.name, e.target.value)}
+                        style={{
+                          ...inputStyle,
+                          ...(hasError ? errorInputStyle : {}),
+                        }}
+                      >
+                        <option value="">— None (use direct API key) —</option>
+                        {credentials.map((cred) => (
+                          <option key={cred.id} value={cred.id}>
+                            {cred.name} ({cred.type})
                           </option>
                         ))}
                       </select>

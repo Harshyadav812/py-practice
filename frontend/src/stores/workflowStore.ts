@@ -14,7 +14,7 @@ import {
 export interface NodeData {
   label: string;
   type: string;
-  category: 'trigger' | 'action' | 'logic' | 'output';
+  category: 'trigger' | 'action' | 'logic' | 'output' | 'ai';
   parameters: Record<string, unknown>;
   credentials?: Record<string, unknown>;
   disabled?: boolean;
@@ -215,6 +215,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       if (type === 'if' || type === 'switch' || type === 'merge' || type === 'condition')
         return 'logic';
       if (type === 'print' || type === 'set') return 'output';
+      if (type.startsWith('llm_')) return 'ai';
       return 'action';
     };
 
