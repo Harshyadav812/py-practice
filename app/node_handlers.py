@@ -30,17 +30,17 @@ async def handle_http(
     params: dict, input_data: Any, engine: WorkflowEngine
 ) -> tuple[Any, int]:
     """HTTP Request node."""
-    timeout = params.get("timeout", 30)
+    timeout = params.get("timeout", 60)
 
-    async with asyncio.timeout(timeout):
-        result = await do_http(
-            url=params["url"],
-            method=params.get("method", "GET"),
-            body=params.get("body"),
-            headers=params.get("headers"),
-            retries=params.get("retries", 0),
-            retry_delay=params.get("retry_delay", 1),
-        )
+    result = await do_http(
+        url=params["url"],
+        method=params.get("method", "GET"),
+        body=params.get("body"),
+        headers=params.get("headers"),
+        retries=params.get("retries", 0),
+        retry_delay=params.get("retry_delay", 1),
+        timeout=timeout,
+    )
 
     return result, 0  # Always output 0 (single output)
 

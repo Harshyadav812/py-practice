@@ -1,0 +1,164 @@
+{
+  "name": "Full Engine Test",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Start",
+      "type": "manual_trigger",
+      "parameters": {}
+    },
+    {
+      "id": "2",
+      "name": "Set Data",
+      "type": "set",
+      "parameters": {
+        "value": {
+          "query": "What is a Python decorator? Explain in two sentences.",
+          "score": 75
+        }
+      }
+    },
+    {
+      "id": "3",
+      "name": "Calculate",
+      "type": "calculate",
+      "parameters": {
+        "operation": "mul",
+        "numbers": ["$'Set Data'.score", 2]
+      }
+    },
+    {
+      "id": "4",
+      "name": "Check Score",
+      "type": "if",
+      "parameters": {
+        "left": "$Calculate",
+        "operator": ">",
+        "right": 100
+      }
+    },
+    {
+      "id": "5",
+      "name": "Wait",
+      "type": "delay",
+      "parameters": {
+        "seconds": 1
+      }
+    },
+    {
+      "id": "6",
+      "name": "Ask NVIDIA",
+      "type": "http",
+      "parameters": {
+        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "method": "POST",
+        "body": {
+          "model": "qwen/qwen3.5-397b-a17b",
+          "messages": [
+            {
+              "role": "user",
+              "content": "$'Set Data'.query"
+            }
+          ],
+          "max_tokens": 512,
+          "temperature": 0.6,
+          "stream": false
+        },
+        "timeout": 120
+      },
+      "credentials": {
+        "nvidiaApi": {
+          "id": "8e09d240-b3a6-4cb0-94ba-1dd24b4c6ba4",
+          "name": "NVIDIA API"
+        }
+      }
+    },
+    {
+      "id": "7",
+      "name": "Print AI Response",
+      "type": "print",
+      "parameters": {}
+    },
+    {
+      "id": "8",
+      "name": "Fallback Message",
+      "type": "set",
+      "parameters": {
+        "value": "Score was too low. AI query skipped."
+      }
+    },
+    {
+      "id": "9",
+      "name": "Print Fallback",
+      "type": "print",
+      "parameters": {}
+    },
+    {
+      "id": "10",
+      "name": "Combine Results",
+      "type": "merge",
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "11",
+      "name": "Final Report",
+      "type": "print",
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [{"node": "Set Data", "type": "main", "index": 0}]
+      ]
+    },
+    "Set Data": {
+      "main": [
+        [{"node": "Calculate", "type": "main", "index": 0}]
+      ]
+    },
+    "Calculate": {
+      "main": [
+        [{"node": "Check Score", "type": "main", "index": 0}]
+      ]
+    },
+    "Check Score": {
+      "main": [
+        [{"node": "Wait", "type": "main", "index": 0}],
+        [{"node": "Fallback Message", "type": "main", "index": 0}]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [{"node": "Ask NVIDIA", "type": "main", "index": 0}]
+      ]
+    },
+    "Ask NVIDIA": {
+      "main": [
+        [{"node": "Print AI Response", "type": "main", "index": 0}]
+      ]
+    },
+    "Print AI Response": {
+      "main": [
+        [{"node": "Combine Results", "type": "main", "index": 0}]
+      ]
+    },
+    "Fallback Message": {
+      "main": [
+        [{"node": "Print Fallback", "type": "main", "index": 0}]
+      ]
+    },
+    "Print Fallback": {
+      "main": [
+        [{"node": "Combine Results", "type": "main", "index": 0}]
+      ]
+    },
+    "Combine Results": {
+      "main": [
+        [{"node": "Final Report", "type": "main", "index": 0}]
+      ]
+    }
+  }
+}

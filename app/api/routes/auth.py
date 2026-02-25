@@ -8,7 +8,7 @@ from sqlmodel import select
 from app.api.deps import CurrentUser, SessionDep
 from app.core import auth, security
 from app.models.users import User
-from app.schemas.users import UserCreate, UserRead
+from app.schemas.users import Token, UserCreate, UserRead
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ def register(user_in: UserCreate, session: SessionDep):
     return user
 
 
-@router.post("/login")
+@router.post("/login", response_model=Token)
 def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDep
 ):
@@ -55,7 +55,7 @@ def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/me", response_model=UserRead)
+@router.get("/me", response_model=UserRead)
 def read_users_me(current_user: CurrentUser):
     """Test endpoint. If you can see this, you are authenticated!"""  # noqa: D400
     return current_user

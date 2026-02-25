@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlmodel import SQLModel
 
-# Import the existing Pydantic models for validtion
+# Import the existing Pydantic models for validation
 from app.schemas.nodes import WorkflowPayload
 
 
@@ -26,3 +27,17 @@ class WorkflowRead(WorkflowBase):
     owner_id: uuid.UUID
     created_at: datetime
     updated_at: datetime | None
+
+
+# Update: Partial input for PATCH (all fields optional)
+class WorkflowUpdate(SQLModel):
+    name: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+    data: WorkflowPayload | None = None
+
+
+# Execute: Response from /execute endpoint
+class ExecuteResponse(SQLModel):
+    status: str
+    results: dict[str, Any]

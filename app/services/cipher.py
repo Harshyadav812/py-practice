@@ -60,8 +60,8 @@ class CipherService:
 
 
 if __name__ == "__main__":
-    os.environ["SENTIENT_FLOW_ENCRYPTION_KEY"] = "my-super-secret-master-password"
-    cipher = CipherService()
+    # Pass master_key directly to bypass settings for standalone testing
+    cipher = CipherService(master_key="my-super-secret-master-password")
     secret = '{"api_key": "12345"}'  # noqa: S105
 
     encrypted = cipher.encrypt(secret)

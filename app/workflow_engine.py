@@ -1,10 +1,14 @@
+import json
 from collections import deque
 from typing import Any
+from uuid import UUID
 
-import httpx
+from sqlmodel import Session
 
-from app.node_handlers import N8N_TYPE_MAPPING, SIMPLE_HANDLERS, get_handler
+from app.models.credentials import Credential
+from app.node_handlers import get_handler
 from app.schemas.nodes import ConnectionTarget, Node, WorkflowPayload
+from app.services.cipher import CipherService
 from app.tasks import resolve_all_variables
 
 # A constant signal to represent a bypassed branch
@@ -12,10 +16,20 @@ SKIP_SIGNAL = "__SKIPPED_BRANCH__"
 
 
 class WorkflowEngine:
-    def __init__(self, workflow: WorkflowPayload):
+    def __init__(
+        self,
+        workflow: WorkflowPayload,
+        session: Session | None = None,
+        user_id: UUID | None = None,
+    ):
         self.workflow: WorkflowPayload = workflow
         self.node_map: dict[str, Node] = workflow.nodes_by_names
         self.execution_state: dict[str, Any] = {}
+
+        # DB access for credential decryption (optional for backward compatibility)
+        self.session = session
+        self.user_id = user_id
+        self.cipher = CipherService() if session else None
 
         # Queue stores tuples: (node_name, input_data)
         self.queue: deque = deque()
@@ -25,7 +39,8 @@ class WorkflowEngine:
             (
                 node.name
                 for node in self.workflow.nodes
-                if "manual_trigger" in node.type
+                if "manual_trigger" in node.type.lower()
+                or "manualtrigger" in node.type.lower()
             ),
             None,
         )
@@ -40,7 +55,8 @@ class WorkflowEngine:
             for connection_type in connections.values():
                 for output_index_list in connection_type:
                     for target in output_index_list:
-                        self.in_degree[target.node] += 1
+                        if target.node in self.in_degree:
+                            self.in_degree[target.node] += 1
 
         # The start node needs 1 "virtual" input to trigger the execution loop
         self.in_degree[self.start_node_name] = 1
@@ -103,6 +119,21 @@ class WorkflowEngine:
 
         return children
 
+    def _load_credential(self, credential_id: str) -> dict[str, Any]:
+        """Fetch a credential from DB, verify ownership, and decrypt it."""
+        if not self.session or not self.user_id or not self.cipher:
+            msg = "Cannot load credentials: no database session provided"
+            raise ValueError(msg)
+
+        cred = self.session.get(Credential, UUID(credential_id))
+
+        if not cred or cred.owner_id != self.user_id:
+            msg = f"Credential '{credential_id}' not found or access denied"
+            raise ValueError(msg)
+
+        decrypted_json = self.cipher.decrypt(cred.encrypted_data)
+        return json.loads(decrypted_json)
+
     async def execute_node(self, node_name: str, input_data: Any = None):
         node_obj: Node = self.node_map[node_name]
 
@@ -113,6 +144,16 @@ class WorkflowEngine:
 
         clean_node = resolve_all_variables(self.execution_state, node_dict)
         clean_params = clean_node.get("parameters", {})
+
+        # Inject decrypted credentials into parameters if the node references any
+        node_credentials = clean_node.get("credentials")
+        if node_credentials and self.session:
+            for _cred_type, cred_ref in node_credentials.items():
+                # n8n format: {"openAiApi": {"id": "cred-uuid", "name": "My Key"}}
+                cred_id = cred_ref.get("id") if isinstance(cred_ref, dict) else cred_ref
+                if cred_id:
+                    decrypted = self._load_credential(str(cred_id))
+                    clean_params.update(decrypted)
 
         node_type = clean_node["type"]
 
@@ -194,8 +235,10 @@ class WorkflowEngine:
                     if len(self.input_buffer[name]) == self.in_degree[name]:
                         self.queue.append((name, self.input_buffer[name]))
 
-            except (ValueError, KeyError, TypeError, httpx.HTTPError) as e:
-                self.execution_state[current_node_name] = {"error": str(e)}
+            except Exception as e:
+                self.execution_state[current_node_name] = {
+                    "error": f"{type(e).__name__}: {str(e)}"
+                }
                 # Propagate failure so downstream nodes aren't stuck waiting
                 for child in self.get_all_children(current_node_name):
                     self.input_buffer[child].append(SKIP_SIGNAL)

@@ -87,12 +87,14 @@ def do_condition(left, operator, right):
             raise ValueError(err_msg)
 
 
-async def do_http(url, method="GET", body=None, headers=None, retries=0, retry_delay=1):
+async def do_http(
+    url, method="GET", body=None, headers=None, retries=0, retry_delay=1, timeout=30
+):
     """Make HTTP requests with retry support, headers, and timeout."""
     if headers is None:
         headers = {}
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         last_exception = None
 
         for attempt in range(retries + 1):
@@ -182,7 +184,7 @@ def get_value_from_path(workflow_results, path: str):
     # 1. Parse tokens ("Lenient Parser")
     # Matches: "Quoted String" OR Word/Digits
     # This effectively ignores dots and brackets, capturing only the keys/indices
-    parts = re.findall(r"['\"]([^'\"]+)['\"]|([\w]+)", path)
+    parts = re.findall(r"['\"]([^'\"]+)['\"]|([\w\-]+)", path)
 
     # Flatten matches from [('Key', ''), ('', '0')] to ['Key', '0']
     clean_parts = [p[0] or p[1] for p in parts]
@@ -246,7 +248,7 @@ def resolve_all_variables(workflow_results, task):
         #   |(?:\[['"][^'"]+['"]\])  -> Bracket String Key (['key'])
         #   |(?:\[\d+\])             -> Bracket Number Index ([0]) <--- Added this
 
-        pattern = r"\$(?:(?:['\"][^'\"]+['\"])|(?:[\w]+))(?:(?:\.[\w]+)|(?:\[['\"][^'\"]+['\"]\])|(?:\[\d+\]))*"
+        pattern = r"\$(?:(?:['\"][^'\"]+['\"])|(?:[\w\-]+))(?:(?:\.[\w\-]+)|(?:\[['\"][^'\"]+['\"]\])|(?:\[\d+\]))*"
 
         # Case A: Strict Variable (Return raw type, e.g., int, list)
         if re.fullmatch(pattern, task):
