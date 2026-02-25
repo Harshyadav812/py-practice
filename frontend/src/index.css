@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0a0f;
+  --color-surface: #13131a;
+  --color-surface-hover: #1a1a24;
+  --color-surface-active: #22222e;
+  --color-border: #2a2a3a;
+  --color-border-hover: #3a3a4f;
+  --color-text-primary: #e8e8ed;
+  --color-text-secondary: #9090a8;
+  --color-text-muted: #606078;
+  --color-accent: #7c5cfc;
+  --color-accent-hover: #9070ff;
+  --color-accent-glow: #7c5cfc33;
+  --color-success: #34d399;
+  --color-error: #f87171;
+  --color-warning: #fbbf24;
+  --color-node-trigger: #f97316;
+  --color-node-action: #3b82f6;
+  --color-node-logic: #a855f7;
+  --color-node-output: #10b981;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+/* React Flow overrides for dark theme */
+.react-flow {
+  --xy-background-color: var(--color-background);
+  --xy-minimap-background-color: var(--color-surface);
+  --xy-edge-stroke: var(--color-border);
+  --xy-edge-stroke-selected: var(--color-accent);
+  --xy-connectionline-stroke: var(--color-accent);
+  --xy-controls-button-background-color: var(--color-surface);
+  --xy-controls-button-color: var(--color-text-primary);
+  --xy-controls-button-border-color: var(--color-border);
+}
+
+.react-flow__node {
+  cursor: grab;
+}
+
+.react-flow__node:active {
+  cursor: grabbing;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
