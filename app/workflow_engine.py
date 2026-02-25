@@ -1,7 +1,8 @@
-import json
 import asyncio
+import json
 from collections import deque
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session
@@ -35,19 +36,22 @@ class WorkflowEngine:
         # Queue stores tuples: (node_name, input_data)
         self.queue: deque = deque()
 
-        # Identify the start node
+        # Identify the start node (any trigger type)
+        trigger_types = {"manual_trigger", "manualtrigger", "webhook"}
         self.start_node_name = next(
             (
                 node.name
                 for node in self.workflow.nodes
-                if "manual_trigger" in node.type.lower()
-                or "manualtrigger" in node.type.lower()
+                if node.type.lower() in trigger_types
+                or any(t in node.type.lower() for t in trigger_types)
             ),
             None,
         )
 
         if not self.start_node_name:
-            raise ValueError("Invalid Workflow: No 'manual_trigger' node found.")
+            raise ValueError(
+                "Invalid Workflow: No trigger node found (manual_trigger or webhook)."
+            )
 
         # Calculate In-Degrees (how many incoming connections each node has)
         self.in_degree = {node.name: 0 for node in self.workflow.nodes}

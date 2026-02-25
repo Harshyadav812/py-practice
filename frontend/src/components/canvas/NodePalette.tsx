@@ -1,32 +1,21 @@
 import type { DragEvent } from 'react';
-import {
-  Zap, Globe, GitBranch, Printer, Clock, Settings, Merge, Calculator,
-} from 'lucide-react';
+import { getNodeTemplates, type Category } from '@/config/nodeDefinitions';
+import type { LucideIcon } from 'lucide-react';
 
 interface NodeTemplate {
   type: string;
   label: string;
-  category: 'trigger' | 'action' | 'logic' | 'output';
-  icon: React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }>;
+  category: Category;
+  icon: LucideIcon;
+  description: string;
 }
-
-const NODE_TEMPLATES: NodeTemplate[] = [
-  { type: 'manual_trigger', label: 'Manual Trigger', category: 'trigger', icon: Zap },
-  { type: 'http', label: 'HTTP Request', category: 'action', icon: Globe },
-  { type: 'set', label: 'Set Data', category: 'output', icon: Settings },
-  { type: 'if', label: 'IF', category: 'logic', icon: GitBranch },
-  { type: 'switch', label: 'Switch', category: 'logic', icon: GitBranch },
-  { type: 'merge', label: 'Merge', category: 'logic', icon: Merge },
-  { type: 'calculate', label: 'Calculate', category: 'action', icon: Calculator },
-  { type: 'delay', label: 'Delay', category: 'action', icon: Clock },
-  { type: 'print', label: 'Print', category: 'output', icon: Printer },
-];
 
 const categoryColors: Record<string, string> = {
   trigger: 'var(--color-node-trigger)',
   action: 'var(--color-node-action)',
   logic: 'var(--color-node-logic)',
   output: 'var(--color-node-output)',
+  ai: 'var(--color-node-ai, #a78bfa)',
 };
 
 const categoryLabels: Record<string, string> = {
@@ -34,15 +23,21 @@ const categoryLabels: Record<string, string> = {
   action: 'Actions',
   logic: 'Logic',
   output: 'Output',
+  ai: 'AI / LLM',
 };
 
 function onDragStart(e: DragEvent, template: NodeTemplate) {
-  e.dataTransfer.setData('application/reactflow', JSON.stringify(template));
+  e.dataTransfer.setData('application/reactflow', JSON.stringify({
+    type: template.type,
+    label: template.label,
+    category: template.category,
+  }));
   e.dataTransfer.effectAllowed = 'move';
 }
 
 export function NodePalette() {
-  const categories = ['trigger', 'action', 'logic', 'output'] as const;
+  const templates = getNodeTemplates() as NodeTemplate[];
+  const categories = ['trigger', 'action', 'logic', 'output', 'ai'] as const;
 
   return (
     <div
@@ -71,7 +66,7 @@ export function NodePalette() {
       </h3>
 
       {categories.map((cat) => {
-        const nodes = NODE_TEMPLATES.filter((n) => n.category === cat);
+        const nodes = templates.filter((n) => n.category === cat);
         if (nodes.length === 0) return null;
 
         return (
@@ -94,6 +89,7 @@ export function NodePalette() {
                 key={tpl.type}
                 draggable
                 onDragStart={(e) => onDragStart(e, tpl)}
+                title={tpl.description}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

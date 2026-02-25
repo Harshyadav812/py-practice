@@ -269,3 +269,186 @@ def resolve_all_variables(workflow_results, task):
             return re.sub(pattern, resolve_template_string, task)
 
     return task
+
+
+# =============================================================================
+# NEW TASK FUNCTIONS
+# =============================================================================
+
+
+def do_safe_eval(expression: str, input_data):
+    """
+    Safely evaluate a Python expression.
+
+    Only allows basic math, string ops, and built-in functions.
+    The variable 'input' is available to reference data from upstream nodes.
+    """
+    # Block dangerous constructs
+    blocked = ["import", "exec(", "eval(", "__", "open(", "os.", "sys.", "subprocess"]
+    lower_expr = expression.lower()
+    for b in blocked:
+        if b in lower_expr:
+            msg = f"Blocked expression: '{b}' is not allowed"
+            raise ValueError(msg)
+
+    # Safe builtins
+    safe_builtins = {
+        "len": len,
+        "str": str,
+        "int": int,
+        "float": float,
+        "bool": bool,
+        "list": list,
+        "dict": dict,
+        "tuple": tuple,
+        "set": set,
+        "abs": abs,
+        "min": min,
+        "max": max,
+        "sum": sum,
+        "round": round,
+        "sorted": sorted,
+        "reversed": reversed,
+        "enumerate": enumerate,
+        "zip": zip,
+        "range": range,
+        "type": type,
+        "isinstance": isinstance,
+        "True": True,
+        "False": False,
+        "None": None,
+    }
+
+    return eval(expression, {"__builtins__": safe_builtins}, {"input": input_data})  # noqa: S307
+
+
+def do_text_template(template: str, workflow_results: dict) -> str:
+    """Interpolate $ variables in a template string using workflow results."""
+    return resolve_all_variables(workflow_results, template)
+
+
+# =============================================================================
+# LLM TASK FUNCTIONS
+# =============================================================================
+
+# Provider base URLs — all use the OpenAI-compatible chat/completions format
+LLM_PROVIDER_URLS = {
+    "openai": "https://api.openai.com/v1/chat/completions",
+    "anthropic": "https://api.anthropic.com/v1/messages",
+    "google": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    "nvidia": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "ollama": "http://localhost:11434/v1/chat/completions",
+    "custom": None,  # User provides full URL
+}
+
+# Default models per provider
+LLM_DEFAULT_MODELS = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-sonnet-4-20250514",
+    "google": "gemini-2.5-flash",
+    "nvidia": "meta/llama-3.1-8b-instruct",
+    "ollama": "llama3.2",
+    "custom": "gpt-4o-mini",
+}
+
+
+async def do_llm_call(
+    provider: str,
+    api_key: str,
+    messages: list[dict],
+    model: str | None = None,
+    temperature: float = 0.7,
+    max_tokens: int = 1024,
+    base_url: str | None = None,
+    timeout: int = 120,
+) -> dict:
+    """
+    Make a chat completion call to any LLM provider.
+
+    All providers except Anthropic use the OpenAI-compatible format.
+    Anthropic uses its own /messages API format.
+    """
+    provider = provider.lower()
+    final_model = model or LLM_DEFAULT_MODELS.get(provider, "gpt-4o-mini")
+
+    # Determine the endpoint URL
+    if base_url:
+        url = base_url
+    elif provider in LLM_PROVIDER_URLS and LLM_PROVIDER_URLS[provider]:
+        url = LLM_PROVIDER_URLS[provider]
+    else:
+        msg = f"Unknown provider: {provider}. Set a custom base_url."
+        raise ValueError(msg)
+
+    # Build headers
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+
+    if provider == "anthropic":
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    elif provider == "google":
+        # Google Gemini uses API key as query param or Bearer
+        headers["Authorization"] = f"Bearer {api_key}"
+    elif provider != "ollama":
+        # OpenAI, NVIDIA, Custom — standard Bearer auth
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # Build request body
+    if provider == "anthropic":
+        # Anthropic has its own message format
+        system_msg = None
+        user_messages = []
+        for msg_item in messages:
+            if msg_item.get("role") == "system":
+                system_msg = msg_item["content"]
+            else:
+                user_messages.append(msg_item)
+
+        body: dict = {
+            "model": final_model,
+            "messages": user_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if system_msg:
+            body["system"] = system_msg
+    else:
+        # OpenAI-compatible format (OpenAI, Google, NVIDIA, Ollama, Custom)
+        body = {
+            "model": final_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(url, json=body, headers=headers)
+
+        if response.status_code != 200:  # noqa: PLR2004
+            return {
+                "error": f"LLM API error ({response.status_code}): {response.text[:500]}",
+                "status_code": response.status_code,
+            }
+
+        data = response.json()
+
+    # Parse response — normalize across providers
+    if provider == "anthropic":
+        content = data.get("content", [{}])
+        text = content[0].get("text", "") if content else ""
+        return {
+            "text": text,
+            "model": data.get("model", final_model),
+            "usage": data.get("usage", {}),
+            "provider": provider,
+        }
+
+    # OpenAI-compatible response
+    choices = data.get("choices", [{}])
+    text = choices[0].get("message", {}).get("content", "") if choices else ""
+    return {
+        "text": text,
+        "model": data.get("model", final_model),
+        "usage": data.get("usage", {}),
+        "provider": provider,
+    }

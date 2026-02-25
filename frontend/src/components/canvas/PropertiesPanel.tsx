@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { X, Trash2, Plus, Code, List } from 'lucide-react';
-import { NODE_DEFINITIONS } from '@/config/nodeDefinitions';
+import { NODE_DEFINITIONS, validateNodeParams, type ValidationError } from '@/config/nodeDefinitions';
 
 export function PropertiesPanel() {
   const { selectedNode, updateNodeData, removeNode, selectNode } =
@@ -11,10 +11,24 @@ export function PropertiesPanel() {
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
 
-  if (!selectedNode) return null;
+  const data = selectedNode?.data;
+  const params = (data?.parameters || {}) as Record<string, unknown>;
+  const nodeType = data?.type || '';
 
-  const data = selectedNode.data;
-  const params = (data.parameters || {}) as Record<string, unknown>;
+  // Live validation — hooks must run unconditionally (Rules of Hooks)
+  const validationErrors = useMemo(
+    () => (nodeType ? validateNodeParams(nodeType, params) : []),
+    [nodeType, params]
+  );
+  const errorsByField = useMemo(() => {
+    const map = new Map<string, ValidationError>();
+    for (const err of validationErrors) {
+      map.set(err.field, err);
+    }
+    return map;
+  }, [validationErrors]);
+
+  if (!selectedNode || !data) return null;
 
   const def = NODE_DEFINITIONS[data.type];
   const schemaProps = def?.properties || [];
@@ -39,7 +53,7 @@ export function PropertiesPanel() {
         });
       }
     } catch {
-      // Valid string, leaves as string
+      // Valid string, leave as string
     }
   };
 
@@ -90,9 +104,16 @@ export function PropertiesPanel() {
           borderBottom: '1px solid var(--color-border)',
         }}
       >
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
-          {data.label}
-        </h3>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
+            {data.label}
+          </h3>
+          {def && (
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+              {def.description}
+            </div>
+          )}
+        </div>
         <button
           onClick={() => selectNode(null)}
           style={{
@@ -101,11 +122,29 @@ export function PropertiesPanel() {
             color: 'var(--color-text-muted)',
             cursor: 'pointer',
             padding: 4,
+            flexShrink: 0,
           }}
         >
           <X size={16} />
         </button>
       </div>
+
+      {/* Validation summary */}
+      {validationErrors.length > 0 && (
+        <div
+          style={{
+            margin: '12px 16px 0',
+            padding: '8px 10px',
+            background: 'rgba(248, 113, 113, 0.1)',
+            border: '1px solid rgba(248, 113, 113, 0.3)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 12,
+            color: 'var(--color-error)',
+          }}
+        >
+          {validationErrors.length} validation {validationErrors.length === 1 ? 'error' : 'errors'}
+        </div>
+      )}
 
       <div style={{ padding: 16, flex: 1 }}>
         {/* Name */}
@@ -166,7 +205,7 @@ export function PropertiesPanel() {
                   const parsed = JSON.parse(e.target.value);
                   updateNodeData(selectedNode.id, { parameters: parsed });
                 } catch {
-                  // Allow partial editing — only update on valid JSON
+                  // Allow partial editing
                 }
               }}
               rows={8}
@@ -181,17 +220,30 @@ export function PropertiesPanel() {
           ) : (
             <div style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12 }}>
               
-              {/* Render Schema-defined Properties */}
+              {/* Schema-defined Properties */}
               {schemaProps.map((prop) => {
                 const value = params[prop.name] ?? prop.default;
+                const error = errorsByField.get(prop.name);
+                const hasError = !!error;
+
                 return (
                   <div key={prop.name} style={{ marginBottom: 16 }}>
-                    <label style={labelStyle}>{prop.displayName}</label>
+                    <label style={labelStyle}>
+                      {prop.displayName}
+                      {prop.required && (
+                        <span style={{ color: 'var(--color-error)', marginLeft: 2 }}>*</span>
+                      )}
+                    </label>
+
+                    {/* Options (select) */}
                     {prop.type === 'options' && (
                       <select
                         value={String(value)}
                         onChange={(e) => handleParamChange(prop.name, e.target.value)}
-                        style={inputStyle}
+                        style={{
+                          ...inputStyle,
+                          ...(hasError ? errorInputStyle : {}),
+                        }}
                       >
                         {prop.options?.map((opt) => (
                           <option key={String(opt.value)} value={String(opt.value)}>
@@ -200,6 +252,8 @@ export function PropertiesPanel() {
                         ))}
                       </select>
                     )}
+
+                    {/* Boolean (checkbox) */}
                     {prop.type === 'boolean' && (
                       <input
                         type="checkbox"
@@ -208,27 +262,62 @@ export function PropertiesPanel() {
                         style={{ accentColor: 'var(--color-accent)' }}
                       />
                     )}
+
+                    {/* Number */}
                     {prop.type === 'number' && (
                       <input
                         type="number"
                         value={value as number}
-                        onChange={(e) => handleParamChange(prop.name, parseFloat(e.target.value))}
-                        style={inputStyle}
+                        min={prop.min}
+                        max={prop.max}
+                        onChange={(e) => handleParamChange(prop.name, parseFloat(e.target.value) || 0)}
+                        placeholder={prop.placeholder}
+                        style={{
+                          ...inputStyle,
+                          ...(hasError ? errorInputStyle : {}),
+                        }}
                       />
                     )}
+
+                    {/* String */}
                     {prop.type === 'string' && (
                       <input
                         type="text"
                         value={value as string}
                         onChange={(e) => handleParamChange(prop.name, e.target.value)}
-                        style={inputStyle}
+                        placeholder={prop.placeholder}
+                        style={{
+                          ...inputStyle,
+                          ...(hasError ? errorInputStyle : {}),
+                        }}
                       />
                     )}
+
+                    {/* Code */}
+                    {prop.type === 'code' && (
+                      <textarea
+                        value={(value as string) || ''}
+                        onChange={(e) => handleParamChange(prop.name, e.target.value)}
+                        placeholder={prop.placeholder}
+                        rows={4}
+                        style={{
+                          ...inputStyle,
+                          resize: 'vertical',
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          ...(hasError ? errorInputStyle : {}),
+                        }}
+                      />
+                    )}
+
+                    {/* JSON / JSON-Array */}
                     {(prop.type === 'json' || prop.type === 'json-array') && (
                       <textarea
-                        value={typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+                        value={typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '')}
                         onChange={(e) => handleParamChange(prop.name, e.target.value)}
                         onBlur={(e) => handleParamBlur(prop.name, e.target.value)}
+                        placeholder={prop.placeholder}
                         style={{
                           ...inputStyle,
                           resize: 'vertical',
@@ -236,10 +325,25 @@ export function PropertiesPanel() {
                           fontSize: 12,
                           lineHeight: 1.5,
                           minHeight: 60,
+                          ...(hasError ? errorInputStyle : {}),
                         }}
                       />
                     )}
-                    {prop.description && (
+
+                    {/* Validation error */}
+                    {hasError && (
+                      <div style={{
+                        fontSize: 11,
+                        color: 'var(--color-error)',
+                        marginTop: 4,
+                        fontWeight: 500,
+                      }}>
+                        ⚠ {error.message}
+                      </div>
+                    )}
+
+                    {/* Description / help text */}
+                    {prop.description && !hasError && (
                       <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>
                         {prop.description}
                       </div>
@@ -248,9 +352,13 @@ export function PropertiesPanel() {
                 );
               })}
 
-              {/* Render Extra / Custom Parameters */}
+              {/* Extra / Custom Parameters */}
               {extraParamKeys.length > 0 && (
-                <div style={{ marginTop: schemaProps.length > 0 ? 16 : 0, borderTop: schemaProps.length > 0 ? '1px solid var(--color-border)' : 'none', paddingTop: schemaProps.length > 0 ? 12 : 0 }}>
+                <div style={{
+                  marginTop: schemaProps.length > 0 ? 16 : 0,
+                  borderTop: schemaProps.length > 0 ? '1px solid var(--color-border)' : 'none',
+                  paddingTop: schemaProps.length > 0 ? 12 : 0,
+                }}>
                   <label style={{ ...labelStyle, marginBottom: 8 }}>Additional Parameters</label>
                   {extraParamKeys.map((k) => {
                     const v = params[k];
@@ -277,8 +385,13 @@ export function PropertiesPanel() {
                 </div>
               )}
 
-              {/* Add New Parameter Form */}
-              <div style={{ display: 'flex', gap: 8, marginTop: schemaProps.length > 0 && extraParamKeys.length === 0 ? 16 : 12, borderTop: schemaProps.length > 0 && extraParamKeys.length === 0 ? '1px solid var(--color-border)' : 'none', paddingTop: schemaProps.length > 0 && extraParamKeys.length === 0 ? 12 : 0 }}>
+              {/* Add New Parameter */}
+              <div style={{
+                display: 'flex', gap: 8,
+                marginTop: schemaProps.length > 0 && extraParamKeys.length === 0 ? 16 : 12,
+                borderTop: schemaProps.length > 0 && extraParamKeys.length === 0 ? '1px solid var(--color-border)' : 'none',
+                paddingTop: schemaProps.length > 0 && extraParamKeys.length === 0 ? 12 : 0,
+              }}>
                 <input
                   placeholder="New Key"
                   value={newKey}
@@ -315,14 +428,7 @@ export function PropertiesPanel() {
         </div>
 
         {/* Disabled toggle */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 20,
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
           <input
             type="checkbox"
             checked={data.disabled || false}
@@ -335,8 +441,6 @@ export function PropertiesPanel() {
             Disabled
           </span>
         </div>
-
-
       </div>
 
       {/* Delete button */}
@@ -349,9 +453,9 @@ export function PropertiesPanel() {
           style={{
             width: '100%',
             padding: '8px 16px',
-            background: 'var(--color-error)15',
+            background: 'rgba(248, 113, 113, 0.08)',
             color: 'var(--color-error)',
-            border: '1px solid var(--color-error)33',
+            border: '1px solid rgba(248, 113, 113, 0.2)',
             borderRadius: 'var(--radius-sm)',
             cursor: 'pointer',
             fontSize: 13,
@@ -389,4 +493,10 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--color-text-primary)',
   fontSize: 13,
   outline: 'none',
+  transition: 'border-color 0.15s',
+};
+
+const errorInputStyle: React.CSSProperties = {
+  borderColor: 'var(--color-error)',
+  boxShadow: '0 0 0 1px rgba(248, 113, 113, 0.3)',
 };

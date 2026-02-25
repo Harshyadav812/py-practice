@@ -2,7 +2,8 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { NodeData } from '@/stores/workflowStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import {
-  Zap, Globe, GitBranch, Printer, Clock, Settings, Merge, Loader2
+  Zap, Globe, GitBranch, Printer, Clock, Settings, Merge, Loader2,
+  Code2, Repeat, Webhook, FileText, BrainCircuit, Tags, FileSearch,
 } from 'lucide-react';
 
 const categoryColors: Record<string, string> = {
@@ -10,10 +11,12 @@ const categoryColors: Record<string, string> = {
   action: 'var(--color-node-action)',
   logic: 'var(--color-node-logic)',
   output: 'var(--color-node-output)',
+  ai: 'var(--color-node-ai, #a78bfa)',
 };
 
 const typeIcons: Record<string, React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }>> = {
   manual_trigger: Zap,
+  webhook: Webhook,
   http: Globe,
   if: GitBranch,
   condition: GitBranch,
@@ -23,6 +26,12 @@ const typeIcons: Record<string, React.ComponentType<{ size?: number; color?: str
   set: Settings,
   calculate: Settings,
   merge: Merge,
+  code: Code2,
+  loop: Repeat,
+  text_template: FileText,
+  llm_chat: BrainCircuit,
+  llm_classify: Tags,
+  llm_summarize: FileSearch,
 };
 
 export function WorkflowNode({ data, selected }: NodeProps) {

@@ -1,11 +1,10 @@
-import { useCallback, useRef, useEffect, type DragEvent } from 'react';
+import { useCallback, useRef, useEffect, useState, type DragEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
-  useReactFlow,
   type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -18,9 +17,10 @@ import {
   generateNodeId,
   type NodeData,
 } from '@/stores/workflowStore';
-import { NODE_DEFINITIONS } from '@/config/nodeDefinitions';
 import { useExecutionStore } from '@/stores/executionStore';
 import { updateWorkflow, getWorkflow } from '@/lib/api';
+import { getDefaultParams, NODE_DEFINITIONS } from '@/config/nodeDefinitions';
+import { validateWorkflow, type WorkflowError } from '@/lib/validateWorkflow';
 import {
   ArrowLeft,
   Save,
@@ -28,7 +28,7 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  LayoutTemplate,
+  AlertTriangle,
 } from 'lucide-react';
 
 const nodeTypes: NodeTypes = {
@@ -39,7 +39,10 @@ export function CanvasPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+
+  const [validationErrors, setValidationErrors] = useState<WorkflowError[]>([]);
+  const [showErrors, setShowErrors] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const {
     nodes,
@@ -54,7 +57,6 @@ export function CanvasPage() {
     selectNode,
     serializeToPayload,
     deserializeFromPayload,
-    layoutNodes,
   } = useWorkflowStore();
 
   const { isRunning, results, error, execute, clear } = useExecutionStore();
@@ -74,7 +76,15 @@ export function CanvasPage() {
     }
   }, [id]);
 
-  // Drag and drop from palette
+  // Clear validation when nodes/edges change
+  useEffect(() => {
+    if (showErrors) {
+      setShowErrors(false);
+      setValidationErrors([]);
+    }
+  }, [nodes, edges]);
+
+  // Drag and drop from palette — with default params
   const onDrop = useCallback(
     (e: DragEvent) => {
       e.preventDefault();
@@ -90,28 +100,25 @@ export function CanvasPage() {
       const wrapper = reactFlowWrapper.current;
       if (!wrapper) return;
 
-      const position = screenToFlowPosition({
-        x: e.clientX,
-        y: e.clientY,
-      });
+      const bounds = wrapper.getBoundingClientRect();
+      const position = {
+        x: e.clientX - bounds.left - 90,
+        y: e.clientY - bounds.top - 30,
+      };
 
+      // Get default parameters from node definition
+      const defaultParams = getDefaultParams(template.type);
       const def = NODE_DEFINITIONS[template.type];
-      const initialParams: Record<string, unknown> = {};
-      if (def && def.properties) {
-        def.properties.forEach(prop => {
-          initialParams[prop.name] = prop.default;
-        });
-      }
 
       const newNode = {
         id: generateNodeId(),
         type: 'workflow',
         position,
         data: {
-          label: template.label,
+          label: def?.defaultLabel || template.label,
           type: template.type,
           category: template.category,
-          parameters: initialParams,
+          parameters: defaultParams,
         } as NodeData,
       };
 
@@ -128,19 +135,33 @@ export function CanvasPage() {
   // Save workflow
   const handleSave = async () => {
     if (!id) return;
+    setSaveStatus('saving');
     const payload = serializeToPayload();
     try {
       await updateWorkflow(id, {
         name: workflowName,
         data: payload,
       });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
       console.error('Save failed:', err);
+      setSaveStatus('idle');
     }
   };
 
-  // Run workflow
+  // Run workflow with pre-validation
   const handleRun = async () => {
+    // Validate first
+    const result = validateWorkflow(nodes, edges);
+    if (!result.valid) {
+      setValidationErrors(result.errors);
+      setShowErrors(true);
+      return;
+    }
+
+    setShowErrors(false);
+    setValidationErrors([]);
     clear();
     const payload = serializeToPayload();
     await execute(payload);
@@ -155,6 +176,9 @@ export function CanvasPage() {
     if (r.error) return 'error';
     return 'success';
   };
+
+  // Check if node has validation errors
+  const errorNodeIds = new Set(validationErrors.map((e) => e.nodeId));
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -194,10 +218,7 @@ export function CanvasPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={layoutNodes} style={topBtnStyle} title="Auto Layout Nodes">
-            <LayoutTemplate size={14} />
-            Auto Layout
-          </button>
+          {/* Execution status */}
           {results && (
             <div
               style={{
@@ -205,15 +226,15 @@ export function CanvasPage() {
                 alignItems: 'center',
                 gap: 4,
                 fontSize: 12,
-                color: error
-                  ? 'var(--color-error)'
-                  : 'var(--color-success)',
+                color: error ? 'var(--color-error)' : 'var(--color-success)',
               }}
             >
               {error ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
               {error ? 'Failed' : 'Complete'}
             </div>
           )}
+
+          {/* Run button */}
           <button
             onClick={handleRun}
             disabled={isRunning}
@@ -227,15 +248,74 @@ export function CanvasPage() {
               fontWeight: 600,
             }}
           >
-            {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            {isRunning ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Play size={14} />
+            )}
             {isRunning ? 'Running…' : 'Run'}
           </button>
-          <button onClick={handleSave} style={topBtnStyle}>
-            <Save size={14} />
-            Save
+
+          {/* Save button */}
+          <button
+            onClick={handleSave}
+            style={{
+              ...topBtnStyle,
+              ...(saveStatus === 'saved'
+                ? { color: 'var(--color-success)', borderColor: 'var(--color-success)' }
+                : {}),
+            }}
+          >
+            {saveStatus === 'saving' ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : saveStatus === 'saved' ? (
+              <CheckCircle2 size={14} />
+            ) : (
+              <Save size={14} />
+            )}
+            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : 'Save'}
           </button>
         </div>
       </div>
+
+      {/* Validation errors banner */}
+      {showErrors && validationErrors.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 16px',
+            background: 'rgba(248, 113, 113, 0.1)',
+            borderBottom: '1px solid rgba(248, 113, 113, 0.3)',
+            fontSize: 13,
+            color: 'var(--color-error)',
+            flexShrink: 0,
+          }}
+        >
+          <AlertTriangle size={14} />
+          <span style={{ fontWeight: 600 }}>
+            {validationErrors.length} validation {validationErrors.length === 1 ? 'error' : 'errors'}:
+          </span>
+          <span style={{ color: 'var(--color-text-secondary)' }}>
+            {validationErrors.slice(0, 3).map((e) => e.message).join(' · ')}
+            {validationErrors.length > 3 && ` · +${validationErrors.length - 3} more`}
+          </span>
+          <button
+            onClick={() => setShowErrors(false)}
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-text-muted)',
+              cursor: 'pointer',
+              fontSize: 16,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Main area */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -245,7 +325,12 @@ export function CanvasPage() {
         {/* Canvas */}
         <div ref={reactFlowWrapper} style={{ flex: 1 }}>
           <ReactFlow
-            nodes={nodes}
+            nodes={nodes.map((n) => ({
+              ...n,
+              style: errorNodeIds.has(n.id)
+                ? { outline: '2px solid var(--color-error)', outlineOffset: 2, borderRadius: 'var(--radius-lg)' }
+                : undefined,
+            }))}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -262,13 +347,12 @@ export function CanvasPage() {
               style: { stroke: 'var(--color-border-hover)', strokeWidth: 2 },
             }}
           >
-            <Background
-              gap={20}
-              size={1}
-              color="var(--color-border)"
-            />
+            <Background gap={20} size={1} color="var(--color-border)" />
             <Controls
-              style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-sm)' }}
+              style={{
+                background: 'var(--color-surface)',
+                borderRadius: 'var(--radius-sm)',
+              }}
             />
             <MiniMap
               style={{
