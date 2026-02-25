@@ -3,6 +3,7 @@ import { create } from 'zustand';
 interface ExecutionState {
   isRunning: boolean;
   runningNode: string | null;
+  nodeStatuses: Record<string, 'success' | 'error' | 'skipped'>;
   results: Record<string, unknown> | null;
   error: string | null;
   execute: (payload: Record<string, unknown>) => Promise<void>;
@@ -12,11 +13,12 @@ interface ExecutionState {
 export const useExecutionStore = create<ExecutionState>((set) => ({
   isRunning: false,
   runningNode: null,
+  nodeStatuses: {},
   results: null,
   error: null,
 
   execute: async (payload) => {
-    set({ isRunning: true, runningNode: null, error: null, results: null });
+    set({ isRunning: true, runningNode: null, nodeStatuses: {}, error: null, results: null });
     try {
       const token = localStorage.getItem('token');
       const headers: Record<string, string> = {
@@ -36,7 +38,6 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      const results: Record<string, unknown> = {};
 
       while (true) {
         const { done, value } = await reader.read();
@@ -52,8 +53,11 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
             if (data.type === 'node_start') {
                set({ runningNode: data.node });
             } else if (data.type === 'node_end') {
-               results[data.node] = data.status === 'success' ? data.result : { error: data.error };
-               set({ results: { ...results } }); // Spread to trigger re-render
+               set(state => ({
+                 nodeStatuses: { ...state.nodeStatuses, [data.node]: data.status }
+               }));
+            } else if (data.type === 'workflow_end') {
+               set({ results: data.results });
             } else if (data.type === 'error') {
                set({ error: data.message });
             }
@@ -63,12 +67,12 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
         }
       }
 
-      set({ isRunning: false, runningNode: null, results });
+      set({ isRunning: false, runningNode: null });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Execution failed';
       set({ error: message, isRunning: false, runningNode: null });
     }
   },
 
-  clear: () => set({ results: null, error: null, runningNode: null }),
+  clear: () => set({ results: null, error: null, runningNode: null, nodeStatuses: {} }),
 }));

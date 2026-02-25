@@ -72,7 +72,11 @@ async def handle_calculate(
     params: dict, input_data: Any, engine: WorkflowEngine
 ) -> tuple[Any, int]:
     """Math operations node."""
-    result = do_calc(params["operation"], *params["numbers"])
+    operation = params.get("operation", "add")
+    numbers = params.get("numbers", [0])
+    if not isinstance(numbers, list):
+        numbers = [0]
+    result = do_calc(operation, *numbers)
     return result, 0
 
 

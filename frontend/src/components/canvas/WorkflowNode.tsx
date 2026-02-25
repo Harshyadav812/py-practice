@@ -25,27 +25,39 @@ const typeIcons: Record<string, React.ComponentType<{ size?: number; color?: str
   merge: Merge,
 };
 
-export function WorkflowNode({ id, data, selected }: NodeProps) {
+export function WorkflowNode({ data, selected }: NodeProps) {
   const nodeData = data as unknown as NodeData;
   const runningNode = useExecutionStore(state => state.runningNode);
-  const isRunning = runningNode === id;
+  const nodeStatuses = useExecutionStore(state => state.nodeStatuses);
+  
+  const isRunning = runningNode === nodeData.label;
+  const status = nodeStatuses[nodeData.label];
+
   const color = categoryColors[nodeData.category] || 'var(--color-accent)';
   const Icon = typeIcons[nodeData.type] || Settings;
   const isLogicNode = nodeData.category === 'logic' && nodeData.type !== 'merge';
+
+  let borderColor = 'var(--color-border)';
+  if (isRunning) borderColor = color;
+  else if (status === 'error') borderColor = 'var(--color-error)';
+  else if (status === 'success') borderColor = 'var(--color-success)';
+  else if (selected) borderColor = color;
+
+  let shadow = '0 4px 12px rgba(0,0,0,0.3)';
+  if (isRunning) shadow = `0 0 0 2px ${color}80, 0 8px 32px ${color}40`;
+  else if (status === 'error') shadow = `0 0 0 1px var(--color-error), 0 4px 12px rgba(248, 113, 113, 0.2)`;
+  else if (status === 'success') shadow = `0 0 0 1px var(--color-success), 0 4px 12px rgba(52, 211, 153, 0.2)`;
+  else if (selected) shadow = `0 0 0 1px ${color}, 0 8px 24px rgba(0,0,0,0.6)`;
 
   return (
       <div
         style={{
           background: 'var(--color-surface)',
-          border: `1px solid ${selected ? color : isRunning ? color : 'var(--color-border)'}`,
+          border: `1px solid ${borderColor}`,
           borderRadius: 'var(--radius-lg)',
           padding: '0',
           minWidth: 220,
-          boxShadow: isRunning 
-            ? `0 0 0 2px ${color}80, 0 8px 32px ${color}40` 
-            : selected 
-              ? `0 0 0 1px ${color}, 0 8px 24px rgba(0,0,0,0.6)` 
-              : '0 4px 12px rgba(0,0,0,0.3)',
+          boxShadow: shadow,
           opacity: nodeData.disabled ? 0.5 : 1,
           transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
           transform: isRunning ? 'scale(1.02)' : 'scale(1)',
@@ -118,10 +130,14 @@ export function WorkflowNode({ id, data, selected }: NodeProps) {
       <div style={{ padding: '8px 16px', fontSize: 11, color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
         {isRunning ? (
            <Loader2 size={12} className="animate-spin" style={{ color }} />
+        ) : status === 'success' ? (
+           <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)' }} />
+        ) : status === 'error' ? (
+           <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-error)' }} />
         ) : (
-           <div style={{ width: 6, height: 6, borderRadius: '50%', background: nodeData.disabled ? 'var(--color-text-muted)' : 'var(--color-success)' }} />
+           <div style={{ width: 6, height: 6, borderRadius: '50%', background: nodeData.disabled ? 'var(--color-text-muted)' : 'var(--color-border)' }} />
         )}
-        {isRunning ? 'Running...' : nodeData.disabled ? 'Disabled' : 'Ready'}
+        {isRunning ? 'Running...' : status === 'success' ? 'Success' : status === 'error' ? 'Failed' : nodeData.disabled ? 'Disabled' : 'Ready'}
       </div>
 
       {/* Output handles */}

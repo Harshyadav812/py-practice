@@ -18,6 +18,7 @@ import {
   generateNodeId,
   type NodeData,
 } from '@/stores/workflowStore';
+import { NODE_DEFINITIONS } from '@/config/nodeDefinitions';
 import { useExecutionStore } from '@/stores/executionStore';
 import { updateWorkflow, getWorkflow } from '@/lib/api';
 import {
@@ -94,6 +95,14 @@ export function CanvasPage() {
         y: e.clientY,
       });
 
+      const def = NODE_DEFINITIONS[template.type];
+      const initialParams: Record<string, unknown> = {};
+      if (def && def.properties) {
+        def.properties.forEach(prop => {
+          initialParams[prop.name] = prop.default;
+        });
+      }
+
       const newNode = {
         id: generateNodeId(),
         type: 'workflow',
@@ -102,7 +111,7 @@ export function CanvasPage() {
           label: template.label,
           type: template.type,
           category: template.category,
-          parameters: {},
+          parameters: initialParams,
         } as NodeData,
       };
 
