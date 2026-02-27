@@ -313,9 +313,7 @@ def resolve_all_variables(workflow_results, task):
     return task
 
 
-# =============================================================================
 # NEW TASK FUNCTIONS
-# =============================================================================
 
 
 def do_safe_eval(expression: str, input_data):

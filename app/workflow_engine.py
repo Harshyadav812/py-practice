@@ -3,12 +3,15 @@ import json
 import logging
 from collections import deque
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session
 
 from app.models.credentials import Credential
+from app.models.execution import Execution, ExecutionStatus
+from app.models.execution_node import ExecutionNode, NodeExecutionStatus
 from app.node_handlers import get_handler
 from app.schemas.nodes import ConnectionTarget, Node, WorkflowPayload
 from app.services.cipher import CipherService
@@ -29,6 +32,7 @@ class WorkflowEngine:
         workflow: WorkflowPayload,
         session: Session | None = None,
         user_id: UUID | None = None,
+        workflow_id: UUID | None = None,
     ):
         self.workflow: WorkflowPayload = workflow
         self.node_map: dict[str, Node] = workflow.nodes_by_names
@@ -37,6 +41,7 @@ class WorkflowEngine:
         # DB access for credential decryption (optional for backward compatibility)
         self.session = session
         self.user_id = user_id
+        self.workflow_id = workflow_id
         self.cipher = CipherService() if session else None
 
         # Queue stores tuples: (node_name, input_data)
@@ -230,6 +235,19 @@ class WorkflowEngine:
             )
             return
 
+        execution_record = None
+        if self.session and self.workflow_id and self.user_id:
+            execution_record = Execution(
+                workflow_id=self.workflow_id,
+                owner_id=self.user_id,
+                status=ExecutionStatus.RUNNING,
+                started_at=datetime.now(UTC),
+                state={},
+            )
+            self.session.add(execution_record)
+            self.session.commit()
+            self.session.refresh(execution_record)
+
         self.input_buffer[self.start_node_name].append({})
         self.queue.append(
             (self.start_node_name, self.input_buffer[self.start_node_name])
@@ -240,7 +258,7 @@ class WorkflowEngine:
         while self.queue:
             current_node_name, buffered_inputs = self.queue.popleft()
 
-            # H9: Execution step limit to prevent DoS
+            # Execution step limit to prevent DoS
             steps_executed += 1
             if steps_executed > MAX_EXECUTION_STEPS:
                 yield (
@@ -278,6 +296,20 @@ class WorkflowEngine:
             else:
                 input_data = valid_inputs[0] if valid_inputs else {}
 
+            # Create the NODE RECORD before execution
+            node_record = None
+            if execution_record and self.session:
+                node_record = ExecutionNode(
+                    execution_id=execution_record.id,
+                    node_name=current_node_name,
+                    status=NodeExecutionStatus.RUNNING,
+                    input_data=input_data,
+                    stated_at=datetime.now(UTC),
+                )
+                self.session.add(node_record)
+                self.session.commit()
+                self.session.refresh(node_record)
+
             try:
                 execution_result = await self.execute_node(
                     current_node_name, input_data
@@ -285,7 +317,7 @@ class WorkflowEngine:
                 self.execution_state[current_node_name] = execution_result["result"]
                 output_index = execution_result["output_index"]
 
-                # Detect "soft" errors (handler returned error dict instead of raising)
+                # Detect "soft" errors
                 result_data = execution_result["result"]
                 is_error_result = (
                     isinstance(result_data, dict)
@@ -294,6 +326,18 @@ class WorkflowEngine:
                 )
 
                 node_status = "error" if is_error_result else "success"
+
+                # UPDATE NODE RECORD AFTER SUCCESS
+                if node_record and self.session:
+                    node_record.status = (
+                        NodeExecutionStatus.ERROR
+                        if is_error_result
+                        else NodeExecutionStatus.SUCCESS
+                    )
+                    node_record.output_data = result_data
+                    node_record.finished_at = datetime.now(UTC)
+                    self.session.add(node_record)
+                    self.session.commit()
 
                 # Send node end event with partial result
                 yield (
@@ -332,6 +376,14 @@ class WorkflowEngine:
                     )
                 self.execution_state[current_node_name] = {"error": safe_error_msg}
 
+                # UPDATE NODE RECORD AFTER CRASH
+                if node_record and self.session:
+                    node_record.status = NodeExecutionStatus.ERROR
+                    node_record.error_message = safe_error_msg
+                    node_record.finished_at = datetime.now(UTC)
+                    self.session.add(node_record)
+                    self.session.commit()
+
                 yield (
                     json.dumps(
                         {
@@ -355,6 +407,22 @@ class WorkflowEngine:
         if stuck_nodes:
             for name in stuck_nodes:
                 self.execution_state[name] = {"error": "Node never executed"}
+
+        # FINALIZE THE MASTER EXECUTION RECORD
+        if execution_record and self.session:
+            # check if any node in the final state contains an error
+            has_error = any(
+                isinstance(res, dict) and "error" in res
+                for res in self.execution_state.values()
+            )
+            execution_record.status = (
+                ExecutionStatus.FAILED if has_error else ExecutionStatus.COMPLETED
+            )
+            execution_record.state = self.execution_state
+            execution_record.finished_at = datetime.now(UTC)
+
+            self.session.add(execution_record)
+            self.session.commit()
 
         yield (
             json.dumps({"type": "workflow_end", "results": self.execution_state}) + "\n"
