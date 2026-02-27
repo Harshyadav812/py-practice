@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import {
@@ -29,8 +30,9 @@ export function DashboardPage() {
     try {
       const data = await getWorkflows();
       setWorkflows(data);
-    } catch {
-      // Will redirect if auth fails
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load workflows');
     } finally {
       setIsLoading(false);
     }
@@ -54,9 +56,11 @@ export function DashboardPage() {
           connections: {},
         },
       });
+      toast.success('Workflow created');
       navigate(`/canvas/${wf.id}`);
     } catch (err) {
       console.error(err);
+      toast.error('Failed to create workflow');
     }
   }
 
@@ -64,8 +68,10 @@ export function DashboardPage() {
     try {
       await deleteWorkflow(id);
       setWorkflows((wfs) => wfs.filter((w) => w.id !== id));
+      toast.success('Workflow deleted');
     } catch (err) {
       console.error(err);
+      toast.error('Failed to delete workflow');
     }
   }
 

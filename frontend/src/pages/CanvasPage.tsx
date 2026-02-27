@@ -5,10 +5,12 @@ import {
   Background,
   Controls,
   type NodeTypes,
+  type EdgeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { WorkflowNode } from '@/components/canvas/WorkflowNode';
+import { DeletableEdge } from '@/components/canvas/DeletableEdge';
 import { NodePalette } from '@/components/canvas/NodePalette';
 import { PropertiesPanel } from '@/components/canvas/PropertiesPanel';
 import {
@@ -30,9 +32,14 @@ import {
   AlertTriangle,
   Menu,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const nodeTypes: NodeTypes = {
   workflow: WorkflowNode,
+};
+
+const edgeTypes: EdgeTypes = {
+  deletable: DeletableEdge,
 };
 
 export function CanvasPage() {
@@ -144,10 +151,12 @@ export function CanvasPage() {
         data: payload,
       });
       setSaveStatus('saved');
+      toast.success('Workflow saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
       console.error('Save failed:', err);
       setSaveStatus('idle');
+      toast.error('Failed to save workflow');
     }
   };
 
@@ -158,6 +167,7 @@ export function CanvasPage() {
     if (!result.valid) {
       setValidationErrors(result.errors);
       setShowErrors(true);
+      toast.error(`Validation failed: ${result.errors.length} error(s)`);
       return;
     }
 
@@ -348,12 +358,15 @@ export function CanvasPage() {
             onDrop={onDrop}
             onDragOver={onDragOver}
             nodeTypes={nodeTypes}
-            fitView
-            proOptions={{ hideAttribution: true }}
+            edgeTypes={edgeTypes}
             defaultEdgeOptions={{
               animated: true,
+              type: 'deletable',
               style: { stroke: 'var(--color-border-hover)', strokeWidth: 2 },
             }}
+            deleteKeyCode={['Backspace', 'Delete']}
+            fitView
+            proOptions={{ hideAttribution: true }}
           >
             <Background gap={20} size={1} color="var(--color-border)" />
             <Controls
@@ -380,8 +393,8 @@ export function CanvasPage() {
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',
             padding: 16,
-            maxWidth: 400,
-            maxHeight: 300,
+            width: 420,
+            maxHeight: 400,
             overflowY: 'auto',
             boxShadow: '0 8px 32px #000a',
             zIndex: 100,
@@ -413,11 +426,13 @@ export function CanvasPage() {
           </div>
           {Object.entries(results).map(([node, result]) => {
             const status = getNodeStatus(node);
+            const fullValue = typeof result === 'object'
+              ? JSON.stringify(result, null, 2)
+              : String(result);
             return (
-              <div
+              <details
                 key={node}
                 style={{
-                  padding: '6px 8px',
                   marginBottom: 4,
                   borderRadius: 'var(--radius-sm)',
                   background: 'var(--color-background)',
@@ -425,25 +440,51 @@ export function CanvasPage() {
                   fontFamily: 'monospace',
                 }}
               >
-                <span
+                <summary
                   style={{
-                    color:
-                      status === 'error'
-                        ? 'var(--color-error)'
-                        : status === 'skipped'
-                        ? 'var(--color-text-muted)'
-                        : 'var(--color-success)',
-                    fontWeight: 600,
+                    padding: '6px 8px',
+                    cursor: 'pointer',
+                    listStyle: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    userSelect: 'none',
                   }}
                 >
-                  {node}:
-                </span>{' '}
-                <span style={{ color: 'var(--color-text-secondary)' }}>
-                  {typeof result === 'object'
-                    ? JSON.stringify(result, null, 1).slice(0, 100)
-                    : String(result)}
-                </span>
-              </div>
+                  <span style={{
+                    fontSize: 8,
+                    color: 'var(--color-text-muted)',
+                    transition: 'transform 0.15s ease',
+                  }}>▶</span>
+                  <span
+                    style={{
+                      color:
+                        status === 'error'
+                          ? 'var(--color-error)'
+                          : status === 'skipped'
+                          ? 'var(--color-text-muted)'
+                          : 'var(--color-success)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {node}
+                  </span>
+                </summary>
+                <pre
+                  style={{
+                    padding: '6px 8px 8px 22px',
+                    margin: 0,
+                    color: 'var(--color-text-secondary)',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    borderTop: '1px solid var(--color-border)',
+                  }}
+                >
+                  {fullValue}
+                </pre>
+              </details>
             );
           })}
         </div>

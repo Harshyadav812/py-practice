@@ -270,7 +270,7 @@ export function PropertiesPanel() {
                           ...(hasError ? errorInputStyle : {}),
                         }}
                       >
-                        <option value="">— None (use direct API key) —</option>
+                        <option value="">None</option>
                         {credentials.map((cred) => (
                           <option key={cred.id} value={cred.id}>
                             {cred.name} ({cred.type})

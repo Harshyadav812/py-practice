@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 
 interface ExecutionState {
   isRunning: boolean;
@@ -33,7 +34,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
       });
 
       if (!res.ok || !res.body) {
-         throw new Error('Execution streaming failed');
+        throw new Error('Execution streaming failed');
       }
 
       const reader = res.body.getReader();
@@ -49,17 +50,21 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
         for (const line of lines) {
           try {
             const data = JSON.parse(line);
-            
+
             if (data.type === 'node_start') {
-               set({ runningNode: data.node });
+              set({ runningNode: data.node });
             } else if (data.type === 'node_end') {
-               set(state => ({
-                 nodeStatuses: { ...state.nodeStatuses, [data.node]: data.status }
-               }));
+              set(state => ({
+                nodeStatuses: { ...state.nodeStatuses, [data.node]: data.status }
+              }));
+              if (data.status === 'error' && data.error) {
+                toast.error(`${data.node}: ${data.error}`);
+              }
             } else if (data.type === 'workflow_end') {
-               set({ results: data.results });
+              set({ results: data.results });
             } else if (data.type === 'error') {
-               set({ error: data.message });
+              set({ error: data.message });
+              toast.error(data.message);
             }
           } catch (e) {
             console.error('Failed to parse SSE chunk', e, line);
@@ -71,6 +76,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Execution failed';
       set({ error: message, isRunning: false, runningNode: null });
+      toast.error(message);
     }
   },
 

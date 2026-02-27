@@ -98,7 +98,7 @@ class WorkflowEngine:
             return [target.node for target in destination_nodes_list]
         return []
 
-    def _detect_cycles(self) -> None:
+    def _detect_cycles(self) -> None:  # noqa: C901
         """Detect cycles in the workflow graph using DFS with coloring."""
         # Build adjacency list
         adjacency: dict[str, list[str]] = {
@@ -113,7 +113,7 @@ class WorkflowEngine:
 
         # DFS with 3-color marking: white=unvisited, gray=in-progress, black=done
         white, gray, black = 0, 1, 2
-        color = {name: white for name in adjacency}
+        color = dict.fromkeys(adjacency, white)
 
         def dfs(node: str) -> str | None:
             color[node] = gray
@@ -217,7 +217,7 @@ class WorkflowEngine:
         msg = f"Unknown task type: {node_type}"
         raise ValueError(msg)
 
-    async def run_stream(self) -> AsyncGenerator[str, None]:
+    async def run_stream(self) -> AsyncGenerator[str, None]:  # noqa: C901, PLR0912
         if not self.start_node_name:
             yield (
                 json.dumps(
@@ -321,9 +321,15 @@ class WorkflowEngine:
                         self.queue.append((name, self.input_buffer[name]))
 
             except Exception as e:
-                # M14: Log full error server-side but only send sanitized message to client
+                # User-caused errors (ValueError, KeyError) → show actual message
+                # Internal errors → sanitize to prevent leaking internals
                 logger.exception("Node '%s' failed during execution", current_node_name)
-                safe_error_msg = f"Node '{current_node_name}' failed during execution"
+                if isinstance(e, (ValueError, KeyError, TypeError)):
+                    safe_error_msg = str(e)
+                else:
+                    safe_error_msg = (
+                        f"Node '{current_node_name}' failed during execution"
+                    )
                 self.execution_state[current_node_name] = {"error": safe_error_msg}
 
                 yield (

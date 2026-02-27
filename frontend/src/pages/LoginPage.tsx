@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { register } from '@/lib/api';
 import { Workflow } from 'lucide-react';
@@ -18,11 +19,15 @@ export function LoginPage() {
     try {
       if (isRegister) {
         await register(email, password);
+        toast.success('Account created successfully');
       }
       await login(email, password);
+      toast.success('Welcome back!');
       navigate('/');
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Something went wrong');
+      const msg = err instanceof Error ? err.message : 'Something went wrong';
+      setLocalError(msg);
+      toast.error(msg);
     }
   };
 

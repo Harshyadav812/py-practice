@@ -8,6 +8,7 @@ from app.schemas.users import UserBase
 
 if TYPE_CHECKING:
     from app.models.credentials import Credential
+    from app.models.execution import Execution
     from app.models.workflow import Workflow
 
 
@@ -25,5 +26,9 @@ class User(UserBase, table=True):
         back_populates="owner", cascade_delete=True
     )
     credentials: list["Credential"] = Relationship(
+        back_populates="owner", cascade_delete=True
+    )
+
+    executions: list["Execution"] = Relationship(
         back_populates="owner", cascade_delete=True
     )

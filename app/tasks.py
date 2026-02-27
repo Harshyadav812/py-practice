@@ -517,6 +517,11 @@ async def do_llm_call(  # noqa: C901, PLR0912, PLR0913
     provider = provider.lower()
     final_model = model or LLM_DEFAULT_MODELS.get(provider, "gpt-4o-mini")
 
+    # Guard: API key is required for all providers
+    if not api_key:
+        msg = f"No API key provided for provider '{provider}'. Please select a saved credential in the node properties (Dashboard → Credentials)."
+        raise ValueError(msg)
+
     # Determine the endpoint URL
     if base_url:
         url = base_url
