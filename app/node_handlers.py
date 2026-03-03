@@ -24,7 +24,7 @@ from .tasks import (
 )
 
 if TYPE_CHECKING:
-    from app.workflow_engine import WorkflowEngine
+    from app.workflow_executor import WorkflowExecutor
 
 
 # =============================================================================
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 async def handle_http(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """HTTP Request node."""
     timeout = params.get("timeout", 60)
@@ -54,7 +54,7 @@ async def handle_http(
 
 
 async def handle_print(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Print/Set node - returns content if provided, else returns input_data."""
     # check if user provided specific content to print
@@ -70,14 +70,14 @@ async def handle_print(
 
 
 async def handle_set(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Set node - stores a value."""
     return params.get("value", params), 0
 
 
 async def handle_calculate(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Math operations node."""
     operation = params.get("operation", "add")
@@ -89,7 +89,7 @@ async def handle_calculate(
 
 
 async def handle_delay(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Delay/Wait node. Capped at 300 seconds to prevent DoS."""
     MAX_DELAY_SECONDS = 300
@@ -101,7 +101,7 @@ async def handle_delay(
 
 
 async def handle_condition(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """
     IF/Condition node - branches based on comparison.
@@ -124,7 +124,7 @@ async def handle_condition(
 
 
 async def handle_switch(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Switch node - routes to different outputs based on value."""
     value = str(params["value"])
@@ -139,7 +139,7 @@ async def handle_switch(
 
 
 async def handle_merge(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Merge node - combines data from multiple incoming branches."""
     mode = params.get("mode", "append")
@@ -162,14 +162,14 @@ async def handle_merge(
 
 
 async def handle_manual_trigger(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Manual Trigger - starting point of workflow."""
     return {}, 0
 
 
 async def handle_webhook_trigger(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Webhook Trigger - stores path info, passes through request data."""
     return {
@@ -180,7 +180,7 @@ async def handle_webhook_trigger(
 
 
 async def handle_code(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Code node - safely evaluate a Python expression."""
     expression = params.get("expression", "")
@@ -199,7 +199,7 @@ async def handle_code(
 
 
 async def handle_loop(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Loop node - iterates over a list and collects results."""
     max_iterations = int(params.get("maxIterations", 100))
@@ -216,7 +216,7 @@ async def handle_loop(
 
 
 async def handle_text_template(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Text Template node - interpolates $ variables into a template string."""
     template = params.get("template", "")
@@ -228,13 +228,13 @@ async def handle_text_template(
     return result, 0
 
 
-def _resolve_llm_api_key(params: dict, engine: WorkflowEngine) -> str:
+def _resolve_llm_api_key(params: dict, engine: WorkflowExecutor) -> str:
     """Resolve API key from a saved credential. Plaintext api_key is not supported."""
     # Look up credential by ID (UUID sent from frontend dropdown)
     credential_id = params.get("credential", "")
-    if credential_id and engine.session:
+    if credential_id and engine.credential_loader:
         try:
-            cred_data = engine._load_credential(str(credential_id))  # noqa: SLF001
+            cred_data = engine.load_credential(str(credential_id))
             return (
                 cred_data.get("api_key", "")
                 or cred_data.get("apiKey", "")
@@ -249,7 +249,7 @@ def _resolve_llm_api_key(params: dict, engine: WorkflowEngine) -> str:
 
 
 async def handle_llm_chat(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """LLM Chat node — send messages to any LLM provider."""
     provider = params.get("provider", "openai")
@@ -286,7 +286,7 @@ async def handle_llm_chat(
 
 
 async def handle_llm_classify(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """LLM Classify node — classify text into categories using an LLM."""
     provider = params.get("provider", "openai")
@@ -335,7 +335,7 @@ async def handle_llm_classify(
 
 
 async def handle_llm_summarize(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """LLM Summarize node — summarize text using an LLM."""
     provider = params.get("provider", "openai")
@@ -377,7 +377,7 @@ async def handle_llm_summarize(
 
 
 async def handle_noop(
-    params: dict, input_data: Any, engine: WorkflowEngine
+    params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """No-op handler for unknown/unsupported nodes - passes through."""
     return input_data, 0
@@ -422,9 +422,9 @@ N8N_TYPE_MAPPING = {
 
 
 def get_handler(node_type: str):
-    """Get handler for a node type. Returns handle_noop if not found."""
+    """Get handler for a node type. Returns None if not found."""
     if node_type in SIMPLE_HANDLERS:
         return SIMPLE_HANDLERS[node_type]
     if node_type in N8N_TYPE_MAPPING:
         return N8N_TYPE_MAPPING[node_type]
-    return handle_noop
+    return None
