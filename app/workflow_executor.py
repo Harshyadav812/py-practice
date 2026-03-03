@@ -271,7 +271,13 @@ class WorkflowExecutor:
                             if len(self.input_buffer[child]) == in_degree[child]:
                                 self.queue.append((child, self.input_buffer[child]))
 
-                        emit({"type": "node_end", "node": current_node_name, "status": "skipped", "result": {"status": "skipped"}, "input": None})
+                        emit({
+                                "type": "node_end",
+                                "node": current_node_name,
+                                "status": "skipped",
+                                "result": {"status": "skipped"},
+                                "input": None,
+                            })
                         continue
 
                     valid_inputs = [i for i in buffered_inputs if i != SKIP_SIGNAL]
@@ -287,7 +293,13 @@ class WorkflowExecutor:
                     # Check disabled BEFORE prior_state fast-path
                     if node_obj and node_obj.disabled:
                         self.execution_state[current_node_name] = input_data
-                        emit({"type": "node_end", "node": current_node_name, "status": "disabled", "result": input_data, "input": input_data})
+                        emit({
+                            "type": "node_end",
+                            "node": current_node_name,
+                            "status": "disabled",
+                            "result": input_data,
+                            "input": input_data,
+                        })
                         for name in self.graph.get_children(current_node_name, 0):
                             self.input_buffer[name].append(input_data)
                             if len(self.input_buffer[name]) == in_degree[name]:
