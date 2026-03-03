@@ -225,272 +225,321 @@ class WorkflowEngine:
         msg = f"Unknown task type: {node_type}"
         raise ValueError(msg)
 
-    async def run_stream(self) -> AsyncGenerator[str, None]:  # noqa: C901, PLR0912
-        if not self.start_node_name:
-            yield (
-                json.dumps(
-                    {
-                        "type": "error",
-                        "message": "Invalid Workflow: No 'manual_trigger' node found.",
-                    }
-                )
-                + "\n"
-            )
-            return
+    async def run_stream(self) -> AsyncGenerator[str, None]:
+        """Yield SSE events.
+
+        Execution runs in a background ``asyncio.Task`` so it is completely
+        independent of the HTTP connection lifecycle.  If the client
+        disconnects (navigates away, closes the tab), the background task
+        keeps running until all nodes are processed and the execution record
+        is committed.
+        """
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        asyncio.create_task(self._execute_workflow(queue))
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield event
+        except (asyncio.CancelledError, GeneratorExit):
+            # Client disconnected — background task continues independently.
+            pass
+
+    async def _execute_workflow(  # noqa: C901, PLR0912
+        self, queue: asyncio.Queue[str | None]
+    ) -> None:
+        """Background execution: run the full workflow and push events to *queue*.
+
+        Creates its own DB session so execution is independent of the HTTP
+        request lifecycle.  If the client disconnects, this task keeps running
+        until all nodes are processed.
+        """
+        from app.db import engine as db_engine
+
+        def emit(data: dict) -> None:
+            queue.put_nowait(json.dumps(data) + "\n")
 
         execution_record = None
-        if self.session and self.workflow_id and self.user_id:
-            execution_record = Execution(
-                workflow_id=self.workflow_id,
-                owner_id=self.user_id,
-                status=ExecutionStatus.RUNNING,
-                started_at=datetime.now(UTC),
-                state={},
-            )
-            self.session.add(execution_record)
-            self.session.commit()
-            self.session.refresh(execution_record)
 
-            # Tell the frontend which execution this is
-            yield (
-                json.dumps(
-                    {
-                        "type": "execution_start",
-                        "execution_id": str(execution_record.id),
-                    }
-                )
-                + "\n"
-            )
-
-        self.input_buffer[self.start_node_name].append({})
-        self.queue.append(
-            (self.start_node_name, self.input_buffer[self.start_node_name])
-        )
-
-        steps_executed: int = 0
-
-        while self.queue:
-            current_node_name, buffered_inputs = self.queue.popleft()
-
-            # Execution step limit to prevent DoS
-            steps_executed += 1
-            if steps_executed > MAX_EXECUTION_STEPS:
-                yield (
-                    json.dumps(
-                        {
-                            "type": "error",
-                            "message": f"Workflow aborted: exceeded maximum of {MAX_EXECUTION_STEPS} execution steps.",
-                        }
-                    )
-                    + "\n"
-                )
-                return
-
-            is_skipped = all(i == SKIP_SIGNAL for i in buffered_inputs)
-            if is_skipped:
-                self.execution_state[current_node_name] = {
-                    "status": "skipped"
-                }  # Record the skipped node in execution log
-                if execution_record and self.session:
-                    skip_record = ExecutionNode(
-                        execution_id=execution_record.id,
-                        node_name=current_node_name,
-                        status=NodeExecutionStatus.SKIPPED,
-                        started_at=datetime.now(UTC),
-                        finished_at=datetime.now(UTC),
-                    )
-                    self.session.add(skip_record)
-                    # Removed commit here to avoid blocking the event loop. Will commit at the end.
-
-                for child in self.get_all_children(current_node_name):
-                    self.input_buffer[child].append(SKIP_SIGNAL)
-                    if len(self.input_buffer[child]) == self.in_degree[child]:
-                        self.queue.append((child, self.input_buffer[child]))
-
-                # Tell frontend this node was explicitly skipped
-                yield (
-                    json.dumps(
-                        {
-                            "type": "node_end",
-                            "node": current_node_name,
-                            "status": "skipped",
-                            "result": {"status": "skipped"},
-                        }
-                    )
-                    + "\n"
-                )
-                continue
-
-            valid_inputs = [i for i in buffered_inputs if i != SKIP_SIGNAL]
-            node_type = self.node_map[current_node_name].type
-            is_merge_node = "merge" in node_type
-
-            if is_merge_node:
-                input_data = valid_inputs
-            else:
-                input_data = valid_inputs[0] if valid_inputs else {}
-
-            prior_node = (
-                self.prior_state.get(current_node_name) if self.prior_state else None
-            )
-
-            if prior_node and prior_node.status == NodeExecutionStatus.SUCCESS:
-                # FAST PATH: This node already succeeded in the past!
-
-                # Update engine state with cached data
-                self.execution_state[current_node_name] = prior_node.output_data
-                output_idx = prior_node.output_index or 0
-
-                node_record = None
-                if execution_record and self.session:
-                    node_record = ExecutionNode(
-                        execution_id=execution_record.id,
-                        node_name=current_node_name,
-                        status=prior_node.status,
-                        input_data=prior_node.input_data,
-                        output_data=prior_node.output_data,
-                        output_index=output_idx,
-                        started_at=datetime.now(UTC),
-                        finished_at=datetime.now(UTC),
-                    )
-                    self.session.add(node_record)
-
-                yield (
-                    json.dumps(
-                        {
-                            "type": "node_end",
-                            "node": current_node_name,
-                            "status": "success",
-                            "result": prior_node.output_data,
-                        }
-                    )
-                    + "\n"
-                )
-
-                # Signal active children with the cached output
-                active_nodes = self.get_next_nodes(current_node_name, output_idx)
-                for name in active_nodes:
-                    self.input_buffer[name].append(prior_node.output_data)
-                    if len(self.input_buffer[name]) == self.in_degree[name]:
-                        self.queue.append((name, self.input_buffer[name]))
-
-                # Signal skipped branches with the skip token
-                skipped_nodes = self.get_skipped_nodes(current_node_name, output_idx)
-                for name in skipped_nodes:
-                    self.input_buffer[name].append(SKIP_SIGNAL)
-                    if len(self.input_buffer[name]) == self.in_degree[name]:
-                        self.queue.append((name, self.input_buffer[name]))
-
-                continue
-
-            # Create the NODE RECORD before actual execution
-            node_record = None
-            if execution_record and self.session:
-                node_record = ExecutionNode(
-                    execution_id=execution_record.id,
-                    node_name=current_node_name,
-                    status=NodeExecutionStatus.RUNNING,
-                    input_data=input_data,
-                    started_at=datetime.now(UTC),
-                )
-                self.session.add(node_record)
-
-            # Send node start event ONLY for nodes that will actually execute
-            yield json.dumps({"type": "node_start", "node": current_node_name}) + "\n"
-
-            # Brief visual delay for demo purposes
-            await asyncio.sleep(0.3)
+        with Session(db_engine) as session:
+            # Replace the request-scoped session (which closes when the HTTP
+            # response ends) with our own independent session.
+            self.session = session
 
             try:
-                execution_result = await self.execute_node(
-                    current_node_name, input_data
-                )
-                self.execution_state[current_node_name] = execution_result["result"]
-                output_index = execution_result["output_index"]
-
-                # Detect "soft" errors
-                result_data = execution_result["result"]
-                is_error_result = (
-                    isinstance(result_data, dict)
-                    and "error" in result_data
-                    and len(result_data) <= 3  # noqa: PLR2004
-                )
-
-                node_status = "error" if is_error_result else "success"
-
-                # UPDATE NODE RECORD AFTER SUCCESS
-                if node_record and self.session:
-                    node_record.status = (
-                        NodeExecutionStatus.ERROR
-                        if is_error_result
-                        else NodeExecutionStatus.SUCCESS
-                    )
-                    node_record.output_data = result_data
-                    node_record.output_index = output_index
-                    node_record.finished_at = datetime.now(UTC)
-                    # Node update is now buffered in the session. It will be saved on final commit.
-
-                # Send node end event with partial result
-                yield (
-                    json.dumps(
+                if not self.start_node_name:
+                    emit(
                         {
-                            "type": "node_end",
-                            "node": current_node_name,
-                            "status": node_status,
-                            "result": result_data,
+                            "type": "error",
+                            "message": "Invalid Workflow: No 'manual_trigger' node found.",
                         }
                     )
-                    + "\n"
+                    return
+
+                if self.session and self.workflow_id and self.user_id:
+                    execution_record = Execution(
+                        workflow_id=self.workflow_id,
+                        owner_id=self.user_id,
+                        status=ExecutionStatus.RUNNING,
+                        started_at=datetime.now(UTC),
+                        state={},
+                    )
+                    self.session.add(execution_record)
+                    self.session.commit()
+                    self.session.refresh(execution_record)
+
+                    emit(
+                        {
+                            "type": "execution_start",
+                            "execution_id": str(execution_record.id),
+                        }
+                    )
+
+                self.input_buffer[self.start_node_name].append({})
+                self.queue.append(
+                    (self.start_node_name, self.input_buffer[self.start_node_name])
                 )
 
-                active_nodes = self.get_next_nodes(current_node_name, output_index)
-                for name in active_nodes:
-                    self.input_buffer[name].append(execution_result["result"])
-                    if len(self.input_buffer[name]) == self.in_degree[name]:
-                        self.queue.append((name, self.input_buffer[name]))
+                steps_executed: int = 0
 
-                skipped_nodes = self.get_skipped_nodes(current_node_name, output_index)
-                for name in skipped_nodes:
-                    self.input_buffer[name].append(SKIP_SIGNAL)
-                    if len(self.input_buffer[name]) == self.in_degree[name]:
-                        self.queue.append((name, self.input_buffer[name]))
+                while self.queue:
+                    current_node_name, buffered_inputs = self.queue.popleft()
+
+                    # Execution step limit to prevent DoS
+                    steps_executed += 1
+                    if steps_executed > MAX_EXECUTION_STEPS:
+                        emit(
+                            {
+                                "type": "error",
+                                "message": f"Workflow aborted: exceeded maximum of {MAX_EXECUTION_STEPS} execution steps.",
+                            }
+                        )
+                        return
+
+                    is_skipped = all(i == SKIP_SIGNAL for i in buffered_inputs)
+                    if is_skipped:
+                        self.execution_state[current_node_name] = {"status": "skipped"}
+                        if execution_record and self.session:
+                            skip_record = ExecutionNode(
+                                execution_id=execution_record.id,
+                                node_name=current_node_name,
+                                status=NodeExecutionStatus.SKIPPED,
+                                started_at=datetime.now(UTC),
+                                finished_at=datetime.now(UTC),
+                            )
+                            self.session.add(skip_record)
+
+                        for child in self.get_all_children(current_node_name):
+                            self.input_buffer[child].append(SKIP_SIGNAL)
+                            if len(self.input_buffer[child]) == self.in_degree[child]:
+                                self.queue.append((child, self.input_buffer[child]))
+
+                        emit(
+                            {
+                                "type": "node_end",
+                                "node": current_node_name,
+                                "status": "skipped",
+                                "result": {"status": "skipped"},
+                                "input": None,
+                            }
+                        )
+                        continue
+
+                    valid_inputs = [i for i in buffered_inputs if i != SKIP_SIGNAL]
+                    node_type = self.node_map[current_node_name].type
+                    is_merge_node = "merge" in node_type
+
+                    if is_merge_node:
+                        input_data = valid_inputs
+                    else:
+                        input_data = valid_inputs[0] if valid_inputs else {}
+
+                    prior_node = (
+                        self.prior_state.get(current_node_name)
+                        if self.prior_state
+                        else None
+                    )
+
+                    if prior_node and prior_node.status == NodeExecutionStatus.SUCCESS:
+                        # FAST PATH: This node already succeeded in the past!
+                        self.execution_state[current_node_name] = prior_node.output_data
+                        output_idx = prior_node.output_index or 0
+
+                        if execution_record and self.session:
+                            node_record = ExecutionNode(
+                                execution_id=execution_record.id,
+                                node_name=current_node_name,
+                                status=prior_node.status,
+                                input_data=prior_node.input_data,
+                                output_data=prior_node.output_data,
+                                output_index=output_idx,
+                                started_at=datetime.now(UTC),
+                                finished_at=datetime.now(UTC),
+                            )
+                            self.session.add(node_record)
+
+                        emit(
+                            {
+                                "type": "node_end",
+                                "node": current_node_name,
+                                "status": "success",
+                                "result": prior_node.output_data,
+                                "input": prior_node.input_data,
+                            }
+                        )
+
+                        active_nodes = self.get_next_nodes(
+                            current_node_name, output_idx
+                        )
+                        for name in active_nodes:
+                            self.input_buffer[name].append(prior_node.output_data)
+                            if len(self.input_buffer[name]) == self.in_degree[name]:
+                                self.queue.append((name, self.input_buffer[name]))
+
+                        skipped_nodes = self.get_skipped_nodes(
+                            current_node_name, output_idx
+                        )
+                        for name in skipped_nodes:
+                            self.input_buffer[name].append(SKIP_SIGNAL)
+                            if len(self.input_buffer[name]) == self.in_degree[name]:
+                                self.queue.append((name, self.input_buffer[name]))
+
+                        continue
+
+                    # Create the NODE RECORD before actual execution
+                    node_record = None
+                    if execution_record and self.session:
+                        node_record = ExecutionNode(
+                            execution_id=execution_record.id,
+                            node_name=current_node_name,
+                            status=NodeExecutionStatus.RUNNING,
+                            input_data=input_data,
+                            started_at=datetime.now(UTC),
+                        )
+                        self.session.add(node_record)
+
+                    emit({"type": "node_start", "node": current_node_name})
+
+                    # Brief visual delay for demo purposes
+                    await asyncio.sleep(0.3)
+
+                    try:
+                        execution_result = await self.execute_node(
+                            current_node_name, input_data
+                        )
+                        self.execution_state[current_node_name] = execution_result[
+                            "result"
+                        ]
+                        output_index = execution_result["output_index"]
+
+                        # Detect "soft" errors
+                        result_data = execution_result["result"]
+                        is_error_result = (
+                            isinstance(result_data, dict)
+                            and "error" in result_data
+                            and len(result_data) <= 3  # noqa: PLR2004
+                        )
+
+                        node_status = "error" if is_error_result else "success"
+
+                        if node_record and self.session:
+                            node_record.status = (
+                                NodeExecutionStatus.ERROR
+                                if is_error_result
+                                else NodeExecutionStatus.SUCCESS
+                            )
+                            node_record.output_data = result_data
+                            node_record.output_index = output_index
+                            node_record.finished_at = datetime.now(UTC)
+
+                        emit(
+                            {
+                                "type": "node_end",
+                                "node": current_node_name,
+                                "status": node_status,
+                                "result": result_data,
+                                "input": input_data,
+                            }
+                        )
+
+                        active_nodes = self.get_next_nodes(
+                            current_node_name, output_index
+                        )
+                        for name in active_nodes:
+                            self.input_buffer[name].append(execution_result["result"])
+                            if len(self.input_buffer[name]) == self.in_degree[name]:
+                                self.queue.append((name, self.input_buffer[name]))
+
+                        skipped_nodes = self.get_skipped_nodes(
+                            current_node_name, output_index
+                        )
+                        for name in skipped_nodes:
+                            self.input_buffer[name].append(SKIP_SIGNAL)
+                            if len(self.input_buffer[name]) == self.in_degree[name]:
+                                self.queue.append((name, self.input_buffer[name]))
+
+                    except Exception as e:
+                        logger.exception(
+                            "Node '%s' failed during execution", current_node_name
+                        )
+                        if isinstance(e, (ValueError, KeyError, TypeError)):
+                            safe_error_msg = str(e)
+                        else:
+                            safe_error_msg = (
+                                f"Node '{current_node_name}' failed during execution"
+                            )
+                        self.execution_state[current_node_name] = {
+                            "error": safe_error_msg
+                        }
+
+                        if node_record and self.session:
+                            node_record.status = NodeExecutionStatus.ERROR
+                            node_record.error_message = safe_error_msg
+                            node_record.finished_at = datetime.now(UTC)
+
+                        emit(
+                            {
+                                "type": "node_end",
+                                "node": current_node_name,
+                                "status": "error",
+                                "error": safe_error_msg,
+                                "input": input_data,
+                            }
+                        )
+
+                        for child in self.get_all_children(current_node_name):
+                            self.input_buffer[child].append(SKIP_SIGNAL)
+                            if len(self.input_buffer[child]) == self.in_degree[child]:
+                                self.queue.append((child, self.input_buffer[child]))
+
+                emit(
+                    {
+                        "type": "workflow_end",
+                        "status": "failed" if self._has_errors() else "completed",
+                        "results": self.execution_state,
+                    }
+                )
 
             except Exception as e:
-                # User-caused errors (ValueError, KeyError) → show actual message
-                # Internal errors → sanitize to prevent leaking internals
-                logger.exception("Node '%s' failed during execution", current_node_name)
-                if isinstance(e, (ValueError, KeyError, TypeError)):
-                    safe_error_msg = str(e)
-                else:
-                    safe_error_msg = (
-                        f"Node '{current_node_name}' failed during execution"
-                    )
-                self.execution_state[current_node_name] = {"error": safe_error_msg}
+                logger.exception("Background workflow execution failed")
+                try:
+                    emit({"type": "error", "message": str(e)})
+                except Exception:
+                    pass
 
-                # UPDATE NODE RECORD AFTER CRASH
-                if node_record and self.session:
-                    node_record.status = NodeExecutionStatus.ERROR
-                    node_record.error_message = safe_error_msg
-                    node_record.finished_at = datetime.now(UTC)
-                    # Node update buffered in session. Will commit at the end.
+            finally:
+                self._finalize_execution(execution_record)
+                queue.put_nowait(None)
 
-                yield (
-                    json.dumps(
-                        {
-                            "type": "node_end",
-                            "node": current_node_name,
-                            "status": "error",
-                            "error": safe_error_msg,
-                        }
-                    )
-                    + "\n"
-                )
+    def _finalize_execution(self, execution_record: Execution | None) -> None:
+        """Finalize the execution record in the database.
 
-                for child in self.get_all_children(current_node_name):
-                    self.input_buffer[child].append(SKIP_SIGNAL)
-                    if len(self.input_buffer[child]) == self.in_degree[child]:
-                        self.queue.append((child, self.input_buffer[child]))
-
+        Called from the ``finally`` block of ``_execute_workflow`` so the
+        execution row is always updated from RUNNING to COMPLETED/FAILED,
+        even if the workflow crashes unexpectedly.
+        """
+        # Mark any nodes that were never reached
         executed_nodes = set(self.execution_state.keys())
         all_nodes = set(self.node_map.keys())
         stuck_nodes = all_nodes - executed_nodes
@@ -498,13 +547,8 @@ class WorkflowEngine:
             for name in stuck_nodes:
                 self.execution_state[name] = {"error": "Node never executed"}
 
-        has_error = any(
-            isinstance(res, dict) and "error" in res
-            for res in self.execution_state.values()
-        )
-        final_workflow_status = "failed" if has_error else "completed"
+        has_error = self._has_errors()
 
-        # FINALIZE THE MASTER EXECUTION RECORD
         if execution_record and self.session:
             execution_record.status = (
                 ExecutionStatus.FAILED if has_error else ExecutionStatus.COMPLETED
@@ -513,17 +557,17 @@ class WorkflowEngine:
             execution_record.finished_at = datetime.now(UTC)
 
             self.session.add(execution_record)
-            self.session.commit()
+            try:
+                self.session.commit()
+            except Exception:
+                logger.exception(
+                    "Failed to commit execution record during finalization"
+                )
 
-        yield (
-            json.dumps(
-                {
-                    "type": "workflow_end",
-                    "status": final_workflow_status,
-                    "results": self.execution_state,
-                }
-            )
-            + "\n"
+    def _has_errors(self) -> bool:
+        return any(
+            isinstance(res, dict) and "error" in res
+            for res in self.execution_state.values()
         )
 
     async def run(self) -> dict[str, Any]:

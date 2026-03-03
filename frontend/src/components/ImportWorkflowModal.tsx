@@ -1,13 +1,22 @@
 import { useState } from 'react';
 import { createWorkflow } from '@/lib/api';
-import { FileCode, X, Upload } from 'lucide-react';
+import { FileCode, Loader2, Upload } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface ImportModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  open: boolean;
 }
 
-export function ImportWorkflowModal({ onClose, onSuccess }: ImportModalProps) {
+export function ImportWorkflowModal({ onClose, onSuccess, open }: ImportModalProps) {
   const [jsonStr, setJsonStr] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,7 +26,7 @@ export function ImportWorkflowModal({ onClose, onSuccess }: ImportModalProps) {
     setIsLoading(true);
     try {
       const parsed = JSON.parse(jsonStr);
-      
+
       // Basic validation
       let name = parsed.name || 'Imported Workflow';
       let data = parsed.data || parsed; // fallback if they just pasted the graph
@@ -27,6 +36,7 @@ export function ImportWorkflowModal({ onClose, onSuccess }: ImportModalProps) {
         data,
       });
 
+      setJsonStr('');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -36,73 +46,52 @@ export function ImportWorkflowModal({ onClose, onSuccess }: ImportModalProps) {
     }
   };
 
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      onClose();
+      setJsonStr('');
+      setError('');
+    }
+  };
+
   return (
-    <div style={overlayStyle}>
-      <div style={modalStyle}>
-        <div style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FileCode size={18} color="var(--color-accent)" />
-            <h2 style={{ margin: 0, fontSize: 18 }}>Import Workflow</h2>
-          </div>
-          <button onClick={onClose} style={closeBtnStyle}><X size={20} /></button>
-        </div>
-        
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 14 }}>
-            Paste the raw JSON representation of your workflow below.
-          </p>
-          
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-xl bg-[#1f1f23] border-[#2e2e33] text-zinc-100">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+            <FileCode className="h-4 w-4 text-[#ff6d5a]" />
+            Import Workflow
+          </DialogTitle>
+          <DialogDescription className="text-zinc-500 text-[13px]">
+            Paste the raw JSON of your workflow below.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4 py-4">
           <textarea
             value={jsonStr}
             onChange={(e) => setJsonStr(e.target.value)}
             placeholder='{ "name": "...", "data": { ... } }'
-            rows={12}
-            style={{ ...inputStyle, fontFamily: 'monospace', resize: 'vertical' }}
+            rows={10}
+            className="w-full rounded-md border border-[#2e2e33] bg-[#18181b] px-3 py-2 text-[12px] text-zinc-200 placeholder:text-zinc-600 focus-visible:outline-none focus:border-[#ff6d5a]/40 disabled:cursor-not-allowed disabled:opacity-50 font-mono resize-y"
           />
 
-          {error && <div style={{ color: 'var(--color-error)', fontSize: 13 }}>{error}</div>}
+          {error && <div className="text-[12px] font-medium text-red-400">{error}</div>}
 
-          <button 
-            onClick={handleImport} 
-            disabled={isLoading || !jsonStr.trim()} 
-            style={{ ...primaryBtnStyle, opacity: isLoading || !jsonStr.trim() ? 0.6 : 1 }}
+          <Button
+            onClick={handleImport}
+            disabled={isLoading || !jsonStr.trim()}
+            className="w-full bg-[#ff6d5a] hover:bg-[#e85a48] text-white h-9 text-[12px]"
           >
-            <Upload size={16} /> Import Workflow
-          </button>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 mr-2" />
+            )}
+            Import Workflow
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
-
-// Styles (shared with CredentialsModal)
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-  background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-};
-
-const modalStyle: React.CSSProperties = {
-  background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-  borderRadius: '24px', width: 520, maxWidth: '90%', boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
-  display: 'flex', flexDirection: 'column', overflow: 'hidden'
-};
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: '20px 24px', borderBottom: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)'
-};
-
-const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 4
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '12px', background: 'var(--color-background)',
-  border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-primary)', fontSize: 13, outline: 'none'
-};
-
-const primaryBtnStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 16px',
-  background: 'var(--color-text-primary)', color: 'var(--color-background)', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600, cursor: 'pointer'
-};

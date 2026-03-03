@@ -9,8 +9,9 @@ import {
 import { X } from 'lucide-react';
 
 /**
- * Custom edge that shows a delete (×) button when hovered.
- * Click the button to remove the connection — like n8n.
+ * Custom edge with n8n-style hover interactions:
+ * - Subtle gray stroke that highlights on hover
+ * - Delete (×) button at midpoint on hover/select
  */
 export const DeletableEdge: FC<EdgeProps> = ({
   id,
@@ -49,7 +50,7 @@ export const DeletableEdge: FC<EdgeProps> = ({
         d={edgePath}
         fill="none"
         stroke="transparent"
-        strokeWidth={20}
+        strokeWidth={24}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{ cursor: 'pointer' }}
@@ -61,42 +62,28 @@ export const DeletableEdge: FC<EdgeProps> = ({
         style={{
           ...style,
           stroke: showButton
-            ? 'var(--color-accent, #6366f1)'
-            : style.stroke || 'var(--color-border-hover)',
-          strokeWidth: showButton ? 2.5 : 2,
-          transition: 'stroke 0.15s ease, stroke-width 0.15s ease',
+            ? '#ff6d5a'
+            : style.stroke || '#3a3a40',
+          strokeWidth: showButton ? 2.5 : 1.5,
+          transition: 'stroke 0.2s, stroke-width 0.2s',
         }}
       />
-      {/* Delete button at midpoint — only visible on hover/select */}
+      {/* Delete button at midpoint */}
       {showButton && (
         <EdgeLabelRenderer>
           <button
             onClick={handleDelete}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
+            className="n8n-edge-delete"
             style={{
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
               pointerEvents: 'all',
-              width: 20,
-              height: 20,
-              borderRadius: '50%',
-              background: 'var(--color-error, #ef4444)',
-              border: '2px solid var(--color-surface, #1a1a2e)',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              padding: 0,
-              fontSize: 0,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-              zIndex: 10,
-              transition: 'transform 0.1s ease',
             }}
             title="Delete connection"
           >
-            <X size={12} strokeWidth={3} />
+            <X size={10} strokeWidth={3} />
           </button>
         </EdgeLabelRenderer>
       )}

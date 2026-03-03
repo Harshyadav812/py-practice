@@ -1,5 +1,6 @@
-import type { DragEvent } from 'react';
+import { useState, type DragEvent } from 'react';
 import { getNodeTemplates, type Category } from '@/config/nodeDefinitions';
+import { Search } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface NodeTemplate {
@@ -11,11 +12,11 @@ interface NodeTemplate {
 }
 
 const categoryColors: Record<string, string> = {
-  trigger: 'var(--color-node-trigger)',
-  action: 'var(--color-node-action)',
-  logic: 'var(--color-node-logic)',
-  output: 'var(--color-node-output)',
-  ai: 'var(--color-node-ai, #a78bfa)',
+  trigger: '#ff6d5a',
+  action: '#3b82f6',
+  logic: '#a855f7',
+  output: '#10b981',
+  ai: '#a78bfa',
 };
 
 const categoryLabels: Record<string, string> = {
@@ -38,98 +39,83 @@ function onDragStart(e: DragEvent, template: NodeTemplate) {
 export function NodePalette() {
   const templates = getNodeTemplates() as NodeTemplate[];
   const categories = ['trigger', 'action', 'logic', 'output', 'ai'] as const;
+  const [search, setSearch] = useState('');
+
+  const filtered = search.trim()
+    ? templates.filter(t =>
+      t.label.toLowerCase().includes(search.toLowerCase()) ||
+      t.type.toLowerCase().includes(search.toLowerCase()) ||
+      t.description.toLowerCase().includes(search.toLowerCase())
+    )
+    : templates;
 
   return (
-    <div
-      style={{
-        width: 240,
-        background: 'var(--color-surface)',
-        borderRight: '1px solid var(--color-border)',
-        padding: '24px 16px',
-        overflowY: 'auto',
-        height: '100%',
-        boxShadow: '4px 0 24px rgba(0,0,0,0.2)',
-        zIndex: 10,
-      }}
-    >
-      <h3
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.1em',
-          color: 'var(--color-text-primary)',
-          margin: '0 0 20px 4px',
-        }}
-      >
-        Nodes
-      </h3>
+    <div className="w-full h-full bg-surface flex flex-col z-40">
+      {/* Header with search */}
+      <div className="px-3 pt-3 pb-2 shrink-0 space-y-2">
+        <h2 className="text-[13px] font-semibold text-zinc-200 px-1">Nodes</h2>
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search nodes…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full h-8 pl-8 pr-3 bg-[#18181b] border border-[#2e2e33] rounded-md text-[12px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-node-trigger/40 transition-colors"
+          />
+        </div>
+      </div>
 
-      {categories.map((cat) => {
-        const nodes = templates.filter((n) => n.category === cat);
-        if (nodes.length === 0) return null;
+      <div className="flex-1 overflow-y-auto px-2 py-1 space-y-3">
+        {categories.map((cat) => {
+          const nodes = filtered.filter((n) => n.category === cat);
+          if (nodes.length === 0) return null;
 
-        return (
-          <div key={cat} style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                color: 'var(--color-text-muted)',
-                marginBottom: 8,
-                paddingLeft: 4,
-              }}
-            >
-              {categoryLabels[cat]}
-            </div>
-            {nodes.map((tpl) => (
-              <div
-                key={tpl.type}
-                draggable
-                onDragStart={(e) => onDragStart(e, tpl)}
-                title={tpl.description}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  cursor: 'grab',
-                  marginBottom: 4,
-                  transition: 'all 0.15s ease',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: 'var(--color-text-primary)',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.0)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.0)';
-                }}
-              >
-                <div
-                  style={{
-                    background: `${categoryColors[cat]}15`,
-                    borderRadius: 'var(--radius-sm)',
-                    padding: 6,
-                    display: 'flex',
-                    color: categoryColors[cat],
-                  }}
-                >
-                  <tpl.icon size={16} style={{ strokeWidth: 1.5 }} />
-                </div>
-                {tpl.label}
+          return (
+            <div key={cat}>
+              <h3 className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600 px-2 py-1.5">
+                {categoryLabels[cat]}
+              </h3>
+
+              <div className="space-y-0.5">
+                {nodes.map((tpl) => (
+                  <div
+                    key={tpl.type}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, tpl)}
+                    title={tpl.description}
+                    className="group flex gap-2.5 w-full py-2 px-2 rounded-md border border-transparent hover:border-[#2e2e33] hover:bg-white/3 cursor-grab active:cursor-grabbing transition-colors"
+                  >
+                    <div
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+                      style={{ backgroundColor: `${categoryColors[cat]}12`, color: categoryColors[cat] }}
+                    >
+                      <tpl.icon size={14} strokeWidth={2} />
+                    </div>
+
+                    <div className="flex flex-col items-start justify-center text-left min-w-0">
+                      <span className="text-[12px] font-medium text-zinc-300 truncate w-full leading-tight">
+                        {tpl.label}
+                      </span>
+                      {tpl.description && (
+                        <span className="text-[10px] text-zinc-600 line-clamp-1 mt-0.5 w-full">
+                          {tpl.description}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+          );
+        })}
+
+        {filtered.length === 0 && search && (
+          <div className="text-center py-6 text-zinc-600 text-[12px]">
+            No nodes match "{search}"
           </div>
-        );
-      })}
+        )}
+      </div>
     </div>
   );
 }

@@ -10,6 +10,8 @@ import {
   type NodeChange,
   type EdgeChange,
 } from '@xyflow/react';
+import { updateWorkflow } from '@/lib/api';
+import { toast } from 'sonner';
 
 export interface NodeData {
   label: string;
@@ -27,6 +29,7 @@ interface WorkflowState {
   nodes: Node<NodeData>[];
   edges: Edge[];
   selectedNode: Node<NodeData> | null;
+  settingsNodeId: string | null;
 
   setWorkflowId: (id: string | null) => void;
   setWorkflowName: (name: string) => void;
@@ -39,9 +42,13 @@ interface WorkflowState {
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
   removeNode: (nodeId: string) => void;
   selectNode: (node: Node<NodeData> | null) => void;
+  setSettingsNodeId: (nodeId: string | null) => void;
   renameNode: (nodeId: string, newName: string) => void;
   clear: () => void;
   layoutNodes: () => void;
+
+  saveStatus: 'idle' | 'saving' | 'saved';
+  saveWorkflow: () => Promise<void>;
 
   // Serialize to/from backend format
   serializeToPayload: () => Record<string, unknown>;
@@ -81,11 +88,31 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNode: null,
+  settingsNodeId: null,
 
   setWorkflowId: (id) => set({ workflowId: id }),
   setWorkflowName: (name) => set({ workflowName: name }),
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
+  setSettingsNodeId: (id) => set({ settingsNodeId: id }),
+
+  saveStatus: 'idle',
+  saveWorkflow: async () => {
+    const { workflowId, workflowName, serializeToPayload } = get();
+    if (!workflowId) return;
+    set({ saveStatus: 'saving' });
+    try {
+      const payload = serializeToPayload();
+      await updateWorkflow(workflowId, { name: workflowName, data: payload });
+      set({ saveStatus: 'saved' });
+      toast.success('Workflow saved');
+      setTimeout(() => set({ saveStatus: 'idle' }), 2000);
+    } catch (err) {
+      console.error('Save failed:', err);
+      set({ saveStatus: 'idle' });
+      toast.error('Failed to save workflow');
+    }
+  },
 
   onNodesChange: (changes) =>
     set({ nodes: applyNodeChanges(changes, get().nodes) as Node<NodeData>[] }),
@@ -155,6 +182,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       nodes: [],
       edges: [],
       selectedNode: null,
+      settingsNodeId: null,
     }),
 
   layoutNodes: () => {

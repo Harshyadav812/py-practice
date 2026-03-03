@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useAuthStore } from '@/stores/authStore';
 import {
   getAllExecutions,
   getExecutionById,
@@ -9,20 +8,20 @@ import {
   type ExecutionDetailData,
 } from '@/lib/api';
 import {
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   Clock,
   Minus,
-  Workflow,
-  LogOut,
   RefreshCw,
   History,
   ExternalLink,
+  ChevronRight,
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export function ExecutionsPage() {
-  const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [executions, setExecutions] = useState<ExecutionData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,20 +61,21 @@ export function ExecutionsPage() {
   }
 
   const statusConfig = {
-    completed: { icon: <CheckCircle2 size={14} />, label: 'Success', color: 'var(--color-success)', bg: 'rgba(74, 222, 128, 0.08)' },
-    failed:    { icon: <XCircle size={14} />,      label: 'Failed',  color: 'var(--color-error)',   bg: 'rgba(248, 113, 113, 0.08)' },
-    running:   { icon: <Clock size={14} />,        label: 'Running', color: 'var(--color-accent)',  bg: 'rgba(96, 165, 250, 0.08)' },
-    pending:   { icon: <Minus size={14} />,        label: 'Pending', color: 'var(--color-text-muted)', bg: 'rgba(255,255,255,0.03)' },
+    completed: { icon: <CheckCircle2 size={14} />, label: 'Success', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+    failed: { icon: <XCircle size={14} />, label: 'Failed', color: 'text-red-400', bg: 'bg-red-400/10' },
+    running: { icon: <Clock size={14} />, label: 'Running', color: 'text-blue-400', bg: 'bg-blue-400/10' },
+    pending: { icon: <Minus size={14} />, label: 'Pending', color: 'text-zinc-400', bg: 'bg-zinc-400/10' },
   };
 
   const nodeStatusConfig: Record<string, { color: string; label: string }> = {
-    success: { color: 'var(--color-success)', label: 'Success' },
-    error:   { color: 'var(--color-error)',   label: 'Error' },
-    skipped: { color: 'var(--color-text-muted)', label: 'Skipped' },
-    running: { color: 'var(--color-accent)',  label: 'Running' },
-    pending: { color: 'var(--color-text-muted)', label: 'Pending' },
+    success: { color: 'text-emerald-400', label: 'Success' },
+    error: { color: 'text-red-400', label: 'Error' },
+    skipped: { color: 'text-zinc-500', label: 'Skipped' },
+    running: { color: 'text-blue-400', label: 'Running' },
+    pending: { color: 'text-zinc-500', label: 'Pending' },
   };
 
+  // Helper functions remain same
   const parseUTC = (dateStr: string | null) => {
     if (!dateStr) return null;
     return new Date(dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z');
@@ -114,127 +114,56 @@ export function ExecutionsPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-background)' }}>
-      {/* Topbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 32px',
-          borderBottom: '1px solid var(--color-border)',
-          background: 'rgba(24, 24, 27, 0.7)',
-          backdropFilter: 'blur(12px)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
-            style={{
-              background: 'linear-gradient(135deg, var(--color-accent), var(--color-accent-hover))',
-              borderRadius: 'var(--radius-sm)',
-              padding: 6,
-              display: 'flex',
-              boxShadow: '0 2px 8px var(--color-accent-glow)',
-            }}
-          >
-            <Workflow size={18} color="white" />
-          </div>
-          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>Sentient Flow</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-            {user?.email}
-          </span>
-          <button
-            onClick={() => { logout(); navigate('/login'); }}
-            style={topBtnStyle}
-          >
-            <LogOut size={14} />
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
+    <div className="min-h-full bg-[#18181b] p-6 lg:p-8">
+      <div className="mx-auto max-w-5xl">
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button onClick={() => navigate('/')} style={topBtnStyle} title="Back to Dashboard">
-              <ArrowLeft size={14} />
-            </button>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <History size={22} />
-                Execution History
-              </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                {executions.length} execution{executions.length !== 1 ? 's' : ''} total
-              </p>
-            </div>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+              Executions
+            </h1>
+            <p className="text-[13px] text-zinc-500 mt-0.5">
+              {executions.length} execution{executions.length !== 1 ? 's' : ''} total
+            </p>
           </div>
-          <button onClick={loadExecutions} style={topBtnStyle} disabled={isLoading}>
-            <RefreshCw size={14} style={isLoading ? { animation: 'spin 1s linear infinite' } : {}} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadExecutions}
+            disabled={isLoading}
+            className="border-[#2e2e33] bg-transparent text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200 h-8 text-[12px]"
+          >
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
-          </button>
+          </Button>
         </div>
 
         {/* Loading */}
         {isLoading && (
-          <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '100px 0' }}>
-            <div style={{ display: 'inline-block', border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', width: 24, height: 24, animation: 'spin 1s linear infinite' }} />
+          <div className="flex min-h-[40vh] flex-col items-center justify-center text-zinc-500">
+            <Loader2 className="h-6 w-6 animate-spin text-[#ff6d5a] mb-3" />
+            <p className="text-[13px]">Loading executions…</p>
           </div>
         )}
 
         {/* Empty */}
         {!isLoading && executions.length === 0 && (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: 80,
-              background: 'var(--color-surface)',
-              color: 'var(--color-text-muted)',
-              border: '1px dashed var(--color-border-hover)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            }}
-          >
-            <History size={40} style={{ marginBottom: 12, opacity: 0.3 }} />
-            <p style={{ fontSize: 16, marginBottom: 8 }}>No executions yet</p>
-            <p style={{ fontSize: 13 }}>Run a workflow to see its execution history here</p>
+          <div className="flex min-h-[40vh] flex-col items-center justify-center rounded-xl border border-dashed border-[#2e2e33] bg-[#1f1f23]/50 p-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#2a2a2f] mb-4">
+              <History className="h-7 w-7 text-zinc-500" />
+            </div>
+            <h3 className="text-base font-medium text-zinc-200 mb-1.5">No executions yet</h3>
+            <p className="text-[13px] text-zinc-500 max-w-xs">
+              Run a workflow to see its execution history here.
+            </p>
           </div>
         )}
 
         {/* Execution table */}
         {!isLoading && executions.length > 0 && (
-          <div
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-            }}
-          >
+          <div className="rounded-xl border border-[#2e2e33] bg-[#1f1f23] overflow-hidden">
             {/* Table header */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr 140px 100px 60px',
-                gap: 12,
-                padding: '10px 20px',
-                borderBottom: '1px solid var(--color-border)',
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--color-text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}
-            >
+            <div className="grid grid-cols-[100px_1fr_120px_80px_32px] gap-3 px-4 py-2.5 border-b border-[#2e2e33] text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
               <span>Status</span>
               <span>Workflow</span>
               <span>Started</span>
@@ -243,235 +172,158 @@ export function ExecutionsPage() {
             </div>
 
             {/* Rows */}
-            {executions.map((exec) => {
-              const sc = statusConfig[exec.status];
-              const isSelected = selectedDetail?.id === exec.id;
+            <div className="divide-y divide-[#2e2e33]">
+              {executions.map((exec) => {
+                const sc = statusConfig[exec.status];
+                const isSelected = selectedDetail?.id === exec.id;
 
-              return (
-                <div key={exec.id}>
-                  <div
-                    onClick={() => handleSelectExecution(exec)}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '120px 1fr 140px 100px 60px',
-                      gap: 12,
-                      padding: '12px 20px',
-                      borderBottom: '1px solid var(--color-border)',
-                      cursor: 'pointer',
-                      background: isSelected ? 'var(--color-surface-active)' : 'transparent',
-                      transition: 'background 0.15s',
-                      alignItems: 'center',
-                      fontSize: 13,
-                    }}
-                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
-                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    {/* Status badge */}
-                    <div>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '3px 10px',
-                          borderRadius: 20,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: sc.color,
-                          background: sc.bg,
-                        }}
-                      >
-                        {sc.icon}
-                        {sc.label}
-                      </span>
-                    </div>
-
-                    {/* Workflow name */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 500 }}>{exec.workflow_name || 'Unknown Workflow'}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/canvas/${exec.workflow_id}`);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: 2,
-                          color: 'var(--color-text-muted)',
-                          opacity: 0.5,
-                        }}
-                        title="Open workflow"
-                      >
-                        <ExternalLink size={12} />
-                      </button>
-                    </div>
-
-                    {/* Timestamp */}
-                    <div style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
-                      {getRelativeTime(exec.started_at || exec.created_at)}
-                    </div>
-
-                    {/* Duration */}
-                    <div style={{ color: 'var(--color-text-secondary)', fontSize: 12, fontFamily: 'monospace' }}>
-                      {getDuration(exec.started_at, exec.finished_at)}
-                    </div>
-
-                    {/* Chevron */}
-                    <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 10, transition: 'transform 0.15s', transform: isSelected ? 'rotate(90deg)' : '' }}>
-                      ▶
-                    </div>
-                  </div>
-
-                  {/* Expanded detail panel */}
-                  {isSelected && selectedDetail && (
+                return (
+                  <div key={exec.id}>
                     <div
-                      style={{
-                        padding: '16px 20px 20px',
-                        background: 'var(--color-background)',
-                        borderBottom: '1px solid var(--color-border)',
-                      }}
+                      onClick={() => handleSelectExecution(exec)}
+                      className={`grid grid-cols-[100px_1fr_120px_80px_32px] gap-3 px-4 py-2.5 cursor-pointer items-center text-[12px] transition-colors hover:bg-white/[0.02] ${isSelected ? 'bg-white/[0.03]' : ''}`}
                     >
-                      {/* Metadata row */}
-                      <div style={{ display: 'flex', gap: 24, marginBottom: 16, fontSize: 12 }}>
-                        <div>
-                          <span style={{ color: 'var(--color-text-muted)' }}>Execution ID: </span>
-                          <span style={{ fontFamily: 'monospace', color: 'var(--color-text-secondary)' }}>{exec.id.slice(0, 8)}…</span>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--color-text-muted)' }}>Started: </span>
-                          <span style={{ color: 'var(--color-text-secondary)' }}>{formatTime(exec.started_at)}</span>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--color-text-muted)' }}>Finished: </span>
-                          <span style={{ color: 'var(--color-text-secondary)' }}>{formatTime(exec.finished_at)}</span>
-                        </div>
+                      {/* Status badge */}
+                      <div>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${sc.color} ${sc.bg}`}>
+                          {sc.icon}
+                          {sc.label}
+                        </span>
                       </div>
 
-                      {/* Node results header */}
-                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Node Results ({selectedDetail.nodes.length})
+                      {/* Workflow name */}
+                      <div className="flex items-center gap-2 font-medium text-zinc-200 text-[12px]">
+                        <span className="truncate">{exec.workflow_name || 'Unknown Workflow'}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.04]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/canvas/${exec.workflow_id}`);
+                          }}
+                          title="Open workflow in editor"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
                       </div>
 
-                      {selectedDetail.nodes.length === 0 ? (
-                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '12px 0' }}>
-                          No node data recorded for this execution.
+                      {/* Timestamp */}
+                      <div className="text-zinc-500 text-[11px]">
+                        {getRelativeTime(exec.started_at || exec.created_at)}
+                      </div>
+
+                      {/* Duration */}
+                      <div className="text-zinc-500 text-[11px] font-mono">
+                        {getDuration(exec.started_at, exec.finished_at)}
+                      </div>
+
+                      {/* Chevron */}
+                      <div className="flex justify-center text-zinc-600">
+                        {isSelected ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      </div>
+                    </div>
+
+                    {/* Loading detail */}
+                    {loadingDetail === exec.id && (
+                      <div className="p-6 border-b border-[#2e2e33] flex justify-center">
+                        <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+                      </div>
+                    )}
+
+                    {/* Expanded detail panel */}
+                    {isSelected && selectedDetail && (
+                      <div className="p-4 border-b border-[#2e2e33] bg-[#18181b]">
+                        {/* Metadata row */}
+                        <div className="flex flex-wrap gap-6 mb-4 text-[11px] bg-[#1f1f23] p-3 rounded-lg border border-[#2e2e33]">
+                          <div>
+                            <span className="text-zinc-600 block mb-0.5">Execution ID</span>
+                            <span className="font-mono text-zinc-400">{exec.id}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-600 block mb-0.5">Started</span>
+                            <span className="text-zinc-400">{formatTime(exec.started_at)}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-600 block mb-0.5">Finished</span>
+                            <span className="text-zinc-400">{formatTime(exec.finished_at)}</span>
+                          </div>
                         </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {selectedDetail.nodes.map((node) => {
-                            const ns = nodeStatusConfig[node.status] || nodeStatusConfig.pending;
-                            return (
-                              <details
-                                key={node.id}
-                                style={{
-                                  background: 'var(--color-surface)',
-                                  border: '1px solid var(--color-border)',
-                                  borderRadius: 'var(--radius-sm)',
-                                  overflow: 'hidden',
-                                }}
-                              >
-                                <summary
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    listStyle: 'none',
-                                    fontSize: 12,
-                                  }}
+
+                        {/* Node results header */}
+                        <h4 className="text-[10px] font-semibold text-zinc-500 mb-2 uppercase tracking-wider px-1">
+                          Node Results ({selectedDetail.nodes.length})
+                        </h4>
+
+                        {selectedDetail.nodes.length === 0 ? (
+                          <div className="text-[12px] text-zinc-500 py-4 px-1">
+                            No node data recorded for this execution.
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {selectedDetail.nodes.map((node) => {
+                              const ns = nodeStatusConfig[node.status] || nodeStatusConfig.pending;
+                              return (
+                                <details
+                                  key={node.id}
+                                  className="group rounded-lg border border-[#2e2e33] bg-[#1f1f23] overflow-hidden [&_summary::-webkit-details-marker]:hidden"
                                 >
-                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: ns.color, flexShrink: 0 }} />
-                                  <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>{node.node_name}</span>
-                                  <span style={{ fontSize: 11, color: ns.color, fontWeight: 500 }}>{ns.label}</span>
-                                  {node.error_message && (
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-error)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {node.error_message}
-                                    </span>
-                                  )}
-                                  {!node.error_message && node.finished_at && node.started_at && (
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
-                                      {getDuration(node.started_at, node.finished_at)}
-                                    </span>
-                                  )}
-                                </summary>
-                                <div style={{ borderTop: '1px solid var(--color-border)', padding: '8px 12px' }}>
-                                  {/* Input */}
-                                  <div style={{ marginBottom: 8 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Input</div>
-                                    <pre style={{
-                                      margin: 0,
-                                      padding: '6px 8px',
-                                      background: 'var(--color-background)',
-                                      borderRadius: 'var(--radius-sm)',
-                                      fontSize: 11,
-                                      fontFamily: 'monospace',
-                                      color: 'var(--color-text-secondary)',
-                                      whiteSpace: 'pre-wrap',
-                                      wordBreak: 'break-word',
-                                      maxHeight: 200,
-                                      overflowY: 'auto',
-                                    }}>
-                                      {JSON.stringify(node.input_data, null, 2) || '—'}
-                                    </pre>
-                                  </div>
-                                  {/* Output */}
-                                  <div>
-                                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Output</div>
-                                    <pre style={{
-                                      margin: 0,
-                                      padding: '6px 8px',
-                                      background: 'var(--color-background)',
-                                      borderRadius: 'var(--radius-sm)',
-                                      fontSize: 11,
-                                      fontFamily: 'monospace',
-                                      color: node.error_message ? 'var(--color-error)' : 'var(--color-text-secondary)',
-                                      whiteSpace: 'pre-wrap',
-                                      wordBreak: 'break-word',
-                                      maxHeight: 200,
-                                      overflowY: 'auto',
-                                    }}>
-                                      {node.error_message || JSON.stringify(node.output_data, null, 2) || '—'}
-                                    </pre>
-                                  </div>
-                                </div>
-                              </details>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                                  <summary className="flex items-center gap-2 p-2.5 cursor-pointer select-none border-b border-transparent group-open:border-[#2e2e33] hover:bg-white/[0.02]">
+                                    <ChevronRight className="h-3 w-3 text-zinc-600 transition-transform group-open:rotate-90 shrink-0" />
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                      <span className={`h-2 w-2 rounded-full ${ns.color.replace('text-', 'bg-')} shrink-0`} />
+                                      <span className="font-medium font-mono text-[12px] text-zinc-300 truncate">{node.node_name}</span>
+                                      <span className={`text-[10px] font-medium ${ns.color}`}>{ns.label}</span>
+                                    </div>
 
-                  {/* Loading indicator for detail */}
-                  {loadingDetail === exec.id && (
-                    <div style={{ padding: '16px 20px', background: 'var(--color-background)', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
-                      <div style={{ display: 'inline-block', border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', width: 16, height: 16, animation: 'spin 1s linear infinite' }} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                                    <div className="flex items-center gap-3 shrink-0 text-[10px]">
+                                      {node.error_message ? (
+                                        <span className="text-red-400 max-w-[180px] truncate" title={node.error_message}>
+                                          {node.error_message}
+                                        </span>
+                                      ) : node.finished_at && node.started_at ? (
+                                        <span className="text-zinc-600 font-mono">
+                                          {getDuration(node.started_at, node.finished_at)}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </summary>
+
+                                  <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#18181b]">
+                                    {/* Input */}
+                                    <div className="flex flex-col min-w-0">
+                                      <div className="text-[9px] font-semibold text-zinc-600 mb-1.5 uppercase tracking-wide">Input</div>
+                                      <div className="bg-[#1f1f23] border border-[#2e2e33] rounded-md p-2.5 overflow-hidden h-full">
+                                        <pre className="text-[11px] font-mono text-zinc-500 whitespace-pre-wrap word-break h-full max-h-48 overflow-y-auto custom-scrollbar">
+                                          {JSON.stringify(node.input_data, null, 2) || '{}'}
+                                        </pre>
+                                      </div>
+                                    </div>
+
+                                    {/* Output */}
+                                    <div className="flex flex-col min-w-0">
+                                      <div className="text-[9px] font-semibold text-zinc-600 mb-1.5 uppercase tracking-wide">Output</div>
+                                      <div className={`bg-[#1f1f23] border border-[#2e2e33] rounded-md p-2.5 overflow-hidden h-full ${node.error_message ? 'border-red-900/30' : ''}`}>
+                                        <pre className={`text-[11px] font-mono whitespace-pre-wrap word-break h-full max-h-48 overflow-y-auto custom-scrollbar ${node.error_message ? 'text-red-400' : 'text-zinc-500'}`}>
+                                          {node.error_message || JSON.stringify(node.output_data, null, 2) || '{}'}
+                                        </pre>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </details>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
-
-const topBtnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '8px 14px',
-  background: 'transparent',
-  border: '1px solid var(--color-border)',
-  borderRadius: 'var(--radius-md)',
-  color: 'var(--color-text-secondary)',
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 500,
-  transition: 'all 0.2s',
-};

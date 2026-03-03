@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useAuthStore } from '@/stores/authStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import {
   getWorkflows,
@@ -9,18 +8,17 @@ import {
   deleteWorkflow,
   type WorkflowData,
 } from '@/lib/api';
-import { Plus, Trash2, LogOut, Play, Workflow, Key, Upload, History } from 'lucide-react';
-import { CredentialsModal } from '@/components/CredentialsModal';
+import { Plus, Trash2, Upload, Loader2, Workflow, Search } from 'lucide-react';
 import { ImportWorkflowModal } from '@/components/ImportWorkflowModal';
+import { Button } from '@/components/ui/button';
 
 export function DashboardPage() {
-  const { user, logout } = useAuthStore();
   const { deserializeFromPayload, setWorkflowId } = useWorkflowStore();
   const navigate = useNavigate();
   const [workflows, setWorkflows] = useState<WorkflowData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showCredentials, setShowCredentials] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadWorkflows();
@@ -83,233 +81,164 @@ export function DashboardPage() {
     navigate(`/canvas/${wf.id}`);
   }
 
+  const filteredWorkflows = workflows.filter(wf =>
+    wf.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const nodeCount = (wf: WorkflowData) => {
+    try {
+      return wf.data?.nodes?.length || 0;
+    } catch { return 0; }
+  };
+
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-background)' }}>
-      {/* Topbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 32px',
-          borderBottom: '1px solid var(--color-border)',
-          background: 'rgba(24, 24, 27, 0.7)',
-          backdropFilter: 'blur(12px)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
-            style={{
-              background: 'linear-gradient(135deg, var(--color-accent), var(--color-accent-hover))',
-              borderRadius: 'var(--radius-sm)',
-              padding: 6,
-              display: 'flex',
-              boxShadow: '0 2px 8px var(--color-accent-glow)',
-            }}
-          >
-            <Workflow size={18} color="white" />
+    <div className="min-h-full bg-[#18181b] p-6 lg:p-8">
+      <div className="mx-auto max-w-6xl">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+              Workflows
+            </h1>
+            <p className="text-[13px] text-zinc-500 mt-0.5">
+              {workflows.length} workflow{workflows.length !== 1 ? 's' : ''} total
+            </p>
           </div>
-          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>Sentient Flow</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-            {user?.email}
-          </span>
-          <button
-            onClick={() => {
-              logout();
-              navigate('/login');
-            }}
-            style={topBtnStyle}
-          >
-            <LogOut size={14} />
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 24,
-          }}
-        >
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
-            My Workflows
-          </h1>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <button onClick={() => setShowCredentials(true)} style={topBtnStyle}>
-              <Key size={14} /> Credentials
-            </button>
-            <button onClick={() => navigate('/executions')} style={topBtnStyle}>
-              <History size={14} /> Executions
-            </button>
-            <button onClick={() => setShowImport(true)} style={topBtnStyle}>
-              <Upload size={14} /> Import JSON
-            </button>
-            <button onClick={handleCreate} style={primaryBtnStyle}>
-              <Plus size={16} />
-              New Workflow
-            </button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowImport(true)}
+              className="border-[#2e2e33] bg-transparent text-zinc-400 hover:bg-white/4 hover:text-zinc-200 h-8 text-[12px]"
+            >
+              <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              className="bg-node-trigger hover:bg-accent-hover text-white h-8 text-[12px] shadow-sm"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> New Workflow
+            </Button>
           </div>
         </div>
+
+        {/* Search bar */}
+        {workflows.length > 0 && (
+          <div className="mb-5 relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              placeholder="Search workflows…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full max-w-sm h-9 pl-9 pr-3 bg-[#1f1f23] border border-[#2e2e33] rounded-lg text-[13px] text-zinc-200 placeholder:text-zinc-500 outline-none focus:border-[#ff6d5a]/40 transition-colors"
+            />
+          </div>
+        )}
 
         {isLoading ? (
-          <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '100px 0' }}>
-            <div style={{ display: 'inline-block', border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', width: 24, height: 24, animation: 'spin 1s linear infinite' }} />
+          <div className="flex min-h-[40vh] flex-col items-center justify-center text-zinc-500">
+            <Loader2 className="h-6 w-6 animate-spin text-[#ff6d5a] mb-3" />
+            <p className="text-[13px]">Loading workflows…</p>
           </div>
         ) : workflows.length === 0 ? (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: 80,
-              background: 'var(--color-surface)',
-              color: 'var(--color-text-muted)',
-              border: '1px dashed var(--color-border-hover)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            }}
-          >
-            <p style={{ fontSize: 16, marginBottom: 8 }}>No workflows yet</p>
-            <p style={{ fontSize: 13 }}>Create your first workflow to get started</p>
+          <div className="flex min-h-[40vh] flex-col items-center justify-center rounded-xl border border-dashed border-[#2e2e33] bg-[#1f1f23]/50 p-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#2a2a2f] mb-4">
+              <Workflow className="h-7 w-7 text-zinc-500" />
+            </div>
+            <h3 className="text-base font-medium text-zinc-200 mb-1.5">No workflows yet</h3>
+            <p className="text-[13px] text-zinc-500 max-w-xs mb-5">
+              Create your first workflow to start automating tasks.
+            </p>
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              className="bg-[#ff6d5a] hover:bg-[#e85a48] text-white h-8 text-[12px]"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Create Workflow
+            </Button>
           </div>
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280, 1fr))',
-              gap: 12,
-            }}
-          >
-            {workflows.map((wf) => (
+          <div className="space-y-1">
+            {/* Table header */}
+            <div className="grid grid-cols-[1fr_120px_100px_80px_40px] gap-3 px-4 py-2 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+              <span>Name</span>
+              <span>Created</span>
+              <span>Nodes</span>
+              <span>ID</span>
+              <span></span>
+            </div>
+
+            {/* Workflow rows */}
+            {filteredWorkflows.map((wf) => (
               <div
                 key={wf.id}
-                style={{
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 'var(--radius-lg)',
-                  padding: 24,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--color-border-hover)';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--color-border)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
-                }}
                 onClick={() => handleOpen(wf)}
+                className="group grid grid-cols-[1fr_120px_100px_80px_40px] gap-3 items-center px-4 py-3 rounded-lg cursor-pointer transition-all hover:bg-white/[0.03] border border-transparent hover:border-[#2e2e33]"
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: 15,
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <Play size={14} color="var(--color-accent)" />
-                    {wf.name}
-                  </h3>
+                {/* Name */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#ff6d5a]/10">
+                    <Workflow className="h-4 w-4 text-[#ff6d5a]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-zinc-200 truncate">
+                      {wf.name}
+                    </div>
+                    {wf.description && (
+                      <div className="text-[11px] text-zinc-500 truncate mt-0.5">
+                        {wf.description}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Created */}
+                <div className="text-[12px] text-zinc-500">
+                  {new Date(wf.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                </div>
+
+                {/* Nodes */}
+                <div className="text-[12px] text-zinc-500">
+                  {nodeCount(wf)} node{nodeCount(wf) !== 1 ? 's' : ''}
+                </div>
+
+                {/* ID */}
+                <div className="text-[11px] text-zinc-600 font-mono">
+                  {wf.id.slice(0, 6)}
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end">
                   <button
+                    className="h-7 w-7 flex items-center justify-center rounded-md text-zinc-600 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete(wf.id);
                     }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--color-text-muted)',
-                      cursor: 'pointer',
-                      padding: 4,
-                    }}
+                    title="Delete workflow"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5, flex: 1 }}>
-                  {wf.description || 'No description provided.'}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--color-text-muted)',
-                    marginTop: 'auto',
-                    paddingTop: 12,
-                    borderTop: '1px solid var(--color-border-subtle)',
-                  }}
-                >
-                  Created {new Date(wf.created_at).toLocaleDateString()}
                 </div>
               </div>
             ))}
+
+            {filteredWorkflows.length === 0 && searchQuery && (
+              <div className="text-center py-12 text-zinc-500 text-[13px]">
+                No workflows match "{searchQuery}"
+              </div>
+            )}
           </div>
         )}
       </div>
-      
-      {showCredentials && <CredentialsModal onClose={() => setShowCredentials(false)} />}
-      {showImport && (
-        <ImportWorkflowModal 
-          onClose={() => setShowImport(false)} 
-          onSuccess={loadWorkflows} 
-        />
-      )}
+
+      <ImportWorkflowModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onSuccess={loadWorkflows}
+      />
     </div>
   );
 }
-
-const topBtnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '8px 14px',
-  background: 'transparent',
-  border: '1px solid var(--color-border)',
-  borderRadius: 'var(--radius-md)',
-  color: 'var(--color-text-secondary)',
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 500,
-  transition: 'all 0.2s',
-};
-
-const primaryBtnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '10px 20px',
-  background: 'var(--color-text-primary)',
-  border: 'none',
-  borderRadius: 'var(--radius-md)',
-  color: 'var(--color-background)',
-  cursor: 'pointer',
-  fontSize: 14,
-  fontWeight: 600,
-  transition: 'transform 0.1s, opacity 0.2s',
-  boxShadow: '0 2px 10px rgba(255,255,255,0.1)',
-};

@@ -1,9 +1,20 @@
 import { useState, useEffect } from 'react';
 import { getCredentials, createCredential, deleteCredential } from '@/lib/api';
-import { Key, Trash2, Plus, X } from 'lucide-react';
+import { Key, Trash2, Plus, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 
 interface CredentialsModalProps {
   onClose: () => void;
+  open: boolean;
 }
 
 interface Credential {
@@ -12,10 +23,10 @@ interface Credential {
   type: string;
 }
 
-export function CredentialsModal({ onClose }: CredentialsModalProps) {
+export function CredentialsModal({ onClose, open }: CredentialsModalProps) {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const [name, setName] = useState('');
   const [type, setType] = useState('api_key');
   const [dataStr, setDataStr] = useState('{\n  "token": "your_token_here"\n}');
@@ -30,8 +41,10 @@ export function CredentialsModal({ onClose }: CredentialsModalProps) {
   };
 
   useEffect(() => {
-    fetchCredentials();
-  }, []);
+    if (open) {
+      fetchCredentials();
+    }
+  }, [open]);
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -41,9 +54,10 @@ export function CredentialsModal({ onClose }: CredentialsModalProps) {
       await createCredential({ name, type, data: parsedData });
       setName('');
       setDataStr('{\n  "token": "your_token_here"\n}');
+      toast.success('Credential created successfully');
       await fetchCredentials();
     } catch (err) {
-      alert('Failed to create credential. Make sure data is valid JSON.');
+      toast.error('Failed to create credential. Make sure data is valid JSON.');
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -53,55 +67,72 @@ export function CredentialsModal({ onClose }: CredentialsModalProps) {
   const handleDelete = async (id: string) => {
     try {
       await deleteCredential(id);
+      toast.success('Credential deleted');
       await fetchCredentials();
     } catch (err) {
+      toast.error('Failed to delete credential');
       console.error(err);
     }
   };
 
   return (
-    <div style={overlayStyle}>
-      <div style={modalStyle}>
-        <div style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Key size={18} color="var(--color-accent)" />
-            <h2 style={{ margin: 0, fontSize: 18 }}>Credentials Manager</h2>
-          </div>
-          <button onClick={onClose} style={closeBtnStyle}><X size={20} /></button>
-        </div>
-        
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24, maxHeight: '60vh', overflowY: 'auto' }}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="sm:max-w-xl bg-[#1f1f23] border-[#2e2e33] text-zinc-100 max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+            <Key className="h-4 w-4 text-[#ff6d5a]" />
+            Credentials
+          </DialogTitle>
+          <DialogDescription className="text-zinc-500 text-[13px]">
+            Manage your API keys and authentication tokens.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-6 py-4">
           <div>
-            <h3 style={sectionTitleStyle}>Your Credentials</h3>
+            <h3 className="mb-3 text-sm font-semibold text-zinc-400 uppercase tracking-widest">
+              Your Credentials
+            </h3>
             {credentials.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>No credentials found.</p>
+              <p className="text-zinc-500 text-[12px]">No credentials found.</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {credentials.map(c => (
-                  <div key={c.id} style={credCardStyle}>
+              <div className="flex flex-col gap-1.5">
+                {credentials.map((c) => (
+                  <div key={c.id} className="flex justify-between items-center p-2.5 bg-[#18181b] border border-[#2e2e33] rounded-lg">
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</div>
-                      <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{c.type}</div>
+                      <div className="font-medium text-[12px] text-zinc-200">{c.name}</div>
+                      <div className="text-[10px] text-zinc-500">{c.type}</div>
                     </div>
-                    <button onClick={() => handleDelete(c.id)} style={dangerBtnStyle}>
-                      <Trash2 size={14} />
-                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(c.id)}
+                      className="h-7 w-7 text-zinc-600 hover:text-red-400 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 24 }}>
-            <h3 style={sectionTitleStyle}>Add New Credential</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input
+          <div className="border-t border-[#2e2e33] pt-5">
+            <h3 className="mb-3 text-[11px] font-semibold text-zinc-500 uppercase tracking-widest">
+              Add New Credential
+            </h3>
+            <div className="flex flex-col gap-2.5">
+              <Input
                 value={name}
-                onChange={e => setName(e.target.value)}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Credential Name (e.g. OpenAI Key)"
-                style={inputStyle}
+                className="bg-[#18181b] border-[#2e2e33] text-zinc-200 placeholder:text-zinc-600 h-9 text-[12px] focus:border-[#ff6d5a]/40"
               />
-              <select value={type} onChange={e => setType(e.target.value)} style={inputStyle}>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="flex h-9 w-full items-center justify-between rounded-md border border-[#2e2e33] bg-[#18181b] px-3 py-2 text-[12px] placeholder:text-zinc-600 focus:outline-none focus:border-[#ff6d5a]/40 disabled:cursor-not-allowed disabled:opacity-50 text-zinc-200"
+              >
                 <option value="api_key">API Key</option>
                 <option value="oauth2">OAuth2</option>
                 <option value="basic_auth">Basic Auth</option>
@@ -109,61 +140,21 @@ export function CredentialsModal({ onClose }: CredentialsModalProps) {
               <textarea
                 value={dataStr}
                 onChange={e => setDataStr(e.target.value)}
-                rows={4}
-                style={{ ...inputStyle, fontFamily: 'monospace', resize: 'vertical' }}
+                rows={3}
+                className="w-full rounded-md border border-[#2e2e33] bg-[#18181b] px-3 py-2 text-[12px] text-zinc-200 placeholder:text-zinc-600 focus-visible:outline-none focus:border-[#ff6d5a]/40 disabled:cursor-not-allowed disabled:opacity-50 font-mono resize-y"
               />
-              <button onClick={handleCreate} disabled={isLoading || !name.trim()} style={primaryBtnStyle}>
-                <Plus size={16} /> Add Credential
-              </button>
+              <Button
+                onClick={handleCreate}
+                disabled={isLoading || !name.trim()}
+                className="w-full bg-[#ff6d5a] hover:bg-[#e85a48] text-white h-8 text-[12px]"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                Add Credential
+              </Button>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
-
-// Styles
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-  background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-};
-
-const modalStyle: React.CSSProperties = {
-  background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-  borderRadius: '24px', width: 480, maxWidth: '90%', boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
-  display: 'flex', flexDirection: 'column', overflow: 'hidden'
-};
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: '20px 24px', borderBottom: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)'
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em'
-};
-
-const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 4
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '10px 14px', background: 'var(--color-background)',
-  border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-primary)', fontSize: 14, outline: 'none'
-};
-
-const credCardStyle: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: '12px 16px', background: 'var(--color-background)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)'
-};
-
-const primaryBtnStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 16px',
-  background: 'var(--color-text-primary)', color: 'var(--color-background)', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600, cursor: 'pointer'
-};
-
-const dangerBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--color-error)', cursor: 'pointer', padding: 4
-};

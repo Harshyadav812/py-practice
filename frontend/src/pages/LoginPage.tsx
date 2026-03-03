@@ -3,12 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/authStore";
 import { register } from "@/lib/api";
-import { Workflow } from "lucide-react";
+import { Workflow, Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
-const schema = z.object({
+const loginSchema = z.object({
+  email: z.email({ message: "Invalid email address" }),
+  password: z.string().min(1, { message: "Password is required" }),
+});
+
+const registerSchema = z.object({
   email: z.email({ message: "Invalid email address" }),
   password: z
     .string()
@@ -25,7 +30,7 @@ const schema = z.object({
     }),
 });
 
-type FormData = z.infer<typeof schema>;
+type FormData = z.infer<typeof registerSchema>;
 
 export function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
@@ -39,7 +44,7 @@ export function LoginPage() {
     formState: { errors },
     reset,
   } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(isRegister ? registerSchema : loginSchema),
     defaultValues: { email: "", password: "" },
   });
 
@@ -61,125 +66,61 @@ export function LoginPage() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--color-background)",
-      }}
-    >
-      <div
-        style={{
-          width: 420,
-          background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "24px",
-          padding: 48,
-          boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-        }}
-      >
+    <div className="min-h-screen flex items-center justify-center bg-[#18181b]">
+      <div className="w-[400px] bg-[#1f1f23] border border-[#2e2e33] rounded-2xl p-10 shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
         {/* Logo */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 10,
-            marginBottom: 32,
-          }}
-        >
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, var(--color-accent), var(--color-accent-hover))",
-              borderRadius: "var(--radius-md)",
-              padding: 10,
-              display: "flex",
-              boxShadow: "0 4px 12px var(--color-accent-glow)",
-            }}
-          >
-            <Workflow size={24} color="white" />
+        <div className="flex items-center justify-center gap-2.5 mb-8">
+          <div className="bg-[#ff6d5a] rounded-lg p-2 flex shadow-[0_4px_12px_rgba(255,109,90,0.2)]">
+            <Workflow size={20} color="white" />
           </div>
-          <span
-            style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em" }}
-          >
+          <span className="text-xl font-bold tracking-tight text-zinc-100">
             Sentient Flow
           </span>
         </div>
 
-        <h2
-          style={{
-            textAlign: "center",
-            fontSize: 15,
-            fontWeight: 500,
-            color: "var(--color-text-secondary)",
-            margin: "0 0 32px",
-          }}
-        >
+        <p className="text-center text-[13px] text-zinc-500 mb-7">
           {isRegister
             ? "Create your account to start building"
             : "Welcome back, please log in"}
-        </h2>
+        </p>
 
         <form onSubmit={handleSubmit(onSubmit)}>
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Email</label>
+          <div className="mb-4">
+            <label className="block text-[12px] font-medium text-zinc-300 mb-1.5">
+              Email
+            </label>
             <input
               type="email"
               placeholder="you@example.com"
               {...formRegister("email")}
-              style={inputStyle}
+              className="w-full h-10 px-3 bg-[#18181b] border border-[#2e2e33] rounded-lg text-[13px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-[#ff6d5a]/40 transition-colors"
             />
             {errors.email && (
-              <span
-                style={{
-                  color: "var(--color-error)",
-                  fontSize: 12,
-                  marginTop: 4,
-                  display: "block",
-                }}
-              >
+              <span className="text-red-400 text-[11px] mt-1 block">
                 {errors.email.message}
               </span>
             )}
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Password</label>
+          <div className="mb-5">
+            <label className="block text-[12px] font-medium text-zinc-300 mb-1.5">
+              Password
+            </label>
             <input
               type="password"
               placeholder="••••••••"
               {...formRegister("password")}
-              style={inputStyle}
+              className="w-full h-10 px-3 bg-[#18181b] border border-[#2e2e33] rounded-lg text-[13px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-[#ff6d5a]/40 transition-colors"
             />
             {errors.password && (
-              <span
-                style={{
-                  color: "var(--color-error)",
-                  fontSize: 12,
-                  marginTop: 4,
-                  display: "block",
-                }}
-              >
+              <span className="text-red-400 text-[11px] mt-1 block">
                 {errors.password.message}
               </span>
             )}
           </div>
 
           {(error || localError) && (
-            <div
-              style={{
-                background: "var(--color-error)15",
-                border: "1px solid var(--color-error)33",
-                borderRadius: "var(--radius-sm)",
-                padding: "8px 12px",
-                marginBottom: 16,
-                fontSize: 13,
-                color: "var(--color-error)",
-              }}
-            >
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-4 text-[12px] text-red-400">
               {localError || error}
             </div>
           )}
@@ -187,32 +128,19 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            style={{
-              width: "100%",
-              padding: "12px 16px",
-              background: isLoading
-                ? "var(--color-surface-active)"
-                : "var(--color-text-primary)",
-              color: "var(--color-background)",
-              border: "none",
-              borderRadius: "var(--radius-md)",
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: isLoading ? "wait" : "pointer",
-              transition: "transform 0.1s, opacity 0.2s",
-              marginTop: 12,
-            }}
+            className="w-full h-10 bg-[#ff6d5a] hover:bg-[#e85a48] disabled:bg-[#2a2a2f] disabled:text-zinc-500 text-white rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-2 mt-2"
           >
+            {isLoading && <Loader2 size={14} className="animate-spin" />}
             {isLoading
-              ? "Loading..."
+              ? "Loading…"
               : isRegister
                 ? "Create Account"
                 : "Sign In"}
           </button>
         </form>
 
-        <div style={{ textAlign: "center", marginTop: 20, fontSize: 13 }}>
-          <span style={{ color: "var(--color-text-muted)" }}>
+        <div className="text-center mt-5 text-[12px]">
+          <span className="text-zinc-500">
             {isRegister ? "Already have an account?" : "Don't have an account?"}
           </span>{" "}
           <button
@@ -220,16 +148,9 @@ export function LoginPage() {
             onClick={() => {
               setIsRegister(!isRegister);
               setLocalError("");
-              reset(); // Clear all validation errors when switching modes
+              reset();
             }}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--color-accent)",
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
+            className="bg-transparent border-none text-[#ff6d5a] cursor-pointer text-[12px] font-medium hover:underline"
           >
             {isRegister ? "Login" : "Register"}
           </button>
@@ -238,23 +159,3 @@ export function LoginPage() {
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  fontWeight: 500,
-  color: "var(--color-text-primary)",
-  marginBottom: 8,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "12px 14px",
-  background: "var(--color-background)",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius-md)",
-  color: "var(--color-text-primary)",
-  fontSize: 15,
-  outline: "none",
-  transition: "border-color 0.2s, box-shadow 0.2s",
-};

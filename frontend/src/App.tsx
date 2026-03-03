@@ -6,7 +6,10 @@ import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { CanvasPage } from '@/pages/CanvasPage';
 import { ExecutionsPage } from '@/pages/ExecutionsPage';
+import { CredentialsPage } from '@/pages/CredentialsPage';
+import { SettingsPage } from '@/pages/SettingsPage';
 import { ReactFlowProvider } from '@xyflow/react';
+import { AppLayout } from '@/components/layout/AppLayout';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -37,32 +40,28 @@ export default function App() {
       />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+
+        {/* Protected layout wraps the dashboard, executions, and other main pages */}
         <Route
-          path="/"
           element={
             <ProtectedRoute>
-              <DashboardPage />
+              <AppLayout />
             </ProtectedRoute>
           }
-        />
-        <Route
-          path="/executions"
-          element={
-            <ProtectedRoute>
-              <ExecutionsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/canvas/:id"
-          element={
-            <ProtectedRoute>
+        >
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/executions" element={<ExecutionsPage />} />
+          <Route path="/credentials" element={<CredentialsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route
+            path="/canvas/:id"
+            element={
               <ReactFlowProvider>
                 <CanvasPage />
               </ReactFlowProvider>
-            </ProtectedRoute>
-          }
-        />
+            }
+          />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

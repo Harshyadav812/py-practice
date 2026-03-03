@@ -4,6 +4,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
   type NodeTypes,
   type EdgeTypes,
 } from '@xyflow/react';
@@ -13,6 +14,7 @@ import { WorkflowNode } from '@/components/canvas/WorkflowNode';
 import { DeletableEdge } from '@/components/canvas/DeletableEdge';
 import { NodePalette } from '@/components/canvas/NodePalette';
 import { PropertiesPanel } from '@/components/canvas/PropertiesPanel';
+import { ExecutionPanel } from '@/components/canvas/ExecutionPanel';
 import {
   useWorkflowStore,
   generateNodeId,
@@ -23,16 +25,20 @@ import { updateWorkflow, getWorkflow } from '@/lib/api';
 import { getDefaultParams, NODE_DEFINITIONS } from '@/config/nodeDefinitions';
 import { validateWorkflow, type WorkflowError } from '@/lib/validateWorkflow';
 import {
-  ArrowLeft,
-  Save,
   Play,
   Loader2,
-  CheckCircle2,
   XCircle,
   AlertTriangle,
-  Menu,
+  ChevronLeft,
+  Save,
+  Check,
+  PanelLeftOpen,
+  PanelLeftClose,
+  PanelBottomOpen,
+  PanelBottomClose,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import clsx from 'clsx';
 
 const nodeTypes: NodeTypes = {
   workflow: WorkflowNode,
@@ -47,32 +53,42 @@ export function CanvasPage() {
   const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-  const [isPaletteOpen, setIsPaletteOpen] = useState(true);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isExecutionPanelOpen, setIsExecutionPanelOpen] = useState(false);
   const [validationErrors, setValidationErrors] = useState<WorkflowError[]>([]);
   const [showErrors, setShowErrors] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [isStartingRun, setIsStartingRun] = useState(false);
 
   const {
     nodes,
     edges,
     workflowName,
+    saveStatus,
     setWorkflowId,
     setWorkflowName,
+    saveWorkflow,
     onNodesChange,
     onEdgesChange,
     onConnect,
     addNode,
     selectNode,
+    settingsNodeId,
     serializeToPayload,
     deserializeFromPayload,
   } = useWorkflowStore();
 
-  const { isRunning, results, error, execute, clear, overallStatus } = useExecutionStore();
+  const { isRunning, execute, clear } = useExecutionStore();
+  const overallStatus = useExecutionStore(s => s.overallStatus);
+
+  // Auto-open execution panel when running starts
+  useEffect(() => {
+    if (isRunning) setIsExecutionPanelOpen(true);
+  }, [isRunning]);
 
   // Load workflow from API
   useEffect(() => {
     if (id) {
+      clear(); // Reset execution state when switching workflows
       setWorkflowId(id);
       getWorkflow(id)
         .then((wf) => {
@@ -92,6 +108,18 @@ export function CanvasPage() {
       setValidationErrors([]);
     }
   }, [nodes, edges]);
+
+  // Keyboard shortcut: Ctrl+S to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveWorkflow();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [saveWorkflow]);
 
   // Drag and drop from palette — with default params
   const onDrop = useCallback(
@@ -141,29 +169,8 @@ export function CanvasPage() {
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  // Save workflow
-  const handleSave = async () => {
-    if (!id) return;
-    setSaveStatus('saving');
-    const payload = serializeToPayload();
-    try {
-      await updateWorkflow(id, {
-        name: workflowName,
-        data: payload,
-      });
-      setSaveStatus('saved');
-      toast.success('Workflow saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch (err) {
-      console.error('Save failed:', err);
-      setSaveStatus('idle');
-      toast.error('Failed to save workflow');
-    }
-  };
-
   // Run workflow with pre-validation
   const handleRun = async () => {
-    // Validate first
     const result = validateWorkflow(nodes, edges);
     if (!result.valid) {
       setValidationErrors(result.errors);
@@ -178,7 +185,6 @@ export function CanvasPage() {
     setIsStartingRun(true);
 
     try {
-      // Save before running so the backend has the latest graph
       const payload = serializeToPayload();
       if (id) {
         try {
@@ -196,215 +202,218 @@ export function CanvasPage() {
     }
   };
 
-
-  // Check if node has validation errors
   const errorNodeIds = new Set(validationErrors.map((e) => e.nodeId));
+  const isPropertiesPanelOpen = !!settingsNodeId;
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Top Bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 16px',
-          borderBottom: '1px solid var(--color-border)',
-          background: 'var(--color-surface)',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div className="w-full h-full flex flex-col bg-[#18181b] overflow-hidden">
+      {/* ── n8n-style Top Header Bar ── */}
+      <div className="n8n-canvas-header flex items-center h-13 px-2 border-b border-[#2e2e33] bg-surface shrink-0 z-50">
+        {/* Left: Back + Workflow Name */}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <button
             onClick={() => navigate('/')}
-            style={topBtnStyle}
-            title="Back to Dashboard"
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/5 transition-colors shrink-0"
+            title="Back to workflows"
           >
-            <ArrowLeft size={14} />
+            <ChevronLeft size={18} />
           </button>
-          <button
-            onClick={() => setIsPaletteOpen((prev) => !prev)}
-            style={topBtnStyle}
-            title="Toggle Nodes Palette"
-          >
-            <Menu size={14} />
-          </button>
+
           <input
             value={workflowName}
             onChange={(e) => setWorkflowName(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--color-text-primary)',
-              fontSize: 15,
-              fontWeight: 600,
-              outline: 'none',
-              width: 250,
-            }}
+            onBlur={() => saveWorkflow()}
+            className="bg-transparent text-[14px] font-semibold text-zinc-100 outline-none border-none px-1.5 py-1 rounded-md hover:bg-white/4 focus:bg-white/6 transition-colors min-w-0 max-w-70 truncate"
+            spellCheck={false}
           />
+
+          {/* Save status indicator */}
+          <div className="flex items-center gap-1 text-[11px] shrink-0 ml-1">
+            {saveStatus === 'saving' && (
+              <span className="flex items-center gap-1 text-zinc-500">
+                <Loader2 size={12} className="animate-spin" />
+                Saving…
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center gap-1 text-emerald-500">
+                <Check size={12} />
+                Saved
+              </span>
+            )}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Execution status */}
-          {(results || overallStatus) && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 12,
-                color: overallStatus === 'failed' || error ? 'var(--color-error)' : 'var(--color-success)',
-              }}
-            >
-              {overallStatus === 'failed' || error ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
-              {overallStatus === 'failed' || error ? 'Failed' : 'Complete'}
-            </div>
-          )}
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1.5">
+          {/* Save Button */}
+          <button
+            onClick={() => saveWorkflow()}
+            disabled={saveStatus === 'saving'}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-colors"
+            title="Save (Ctrl+S)"
+          >
+            <Save size={14} />
+          </button>
 
-          {/* Run button */}
+          {/* Palette Toggle */}
+          <button
+            onClick={() => setIsPaletteOpen((prev) => !prev)}
+            className={clsx(
+              "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-colors",
+              isPaletteOpen
+                ? "text-node-trigger bg-node-trigger/10 hover:bg-node-trigger/15"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
+            )}
+            title="Toggle node palette"
+          >
+            {isPaletteOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+            <span className="hidden sm:inline">Nodes</span>
+          </button>
+
+          {/* Execution Panel Toggle */}
+          <button
+            onClick={() => setIsExecutionPanelOpen((prev) => !prev)}
+            className={clsx(
+              "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-colors",
+              isExecutionPanelOpen
+                ? "text-node-trigger bg-node-trigger/10 hover:bg-node-trigger/15"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
+            )}
+            title="Toggle execution panel"
+          >
+            {isExecutionPanelOpen ? <PanelBottomClose size={15} /> : <PanelBottomOpen size={15} />}
+            <span className="hidden sm:inline">Runs</span>
+            {overallStatus === 'success' && !isRunning && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            )}
+            {overallStatus === 'failed' && !isRunning && (
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            )}
+            {isRunning && (
+              <span className="w-1.5 h-1.5 rounded-full bg-node-trigger animate-pulse" />
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-6 bg-[#2e2e33] mx-0.5" />
+
+          {/* Execute Button */}
           <button
             onClick={handleRun}
             disabled={isRunning || isStartingRun}
-            style={{
-              ...topBtnStyle,
-              background: (isRunning || isStartingRun)
-                ? 'var(--color-surface-active)'
-                : 'var(--color-success)',
-              color: (isRunning || isStartingRun) ? 'var(--color-text-muted)' : 'white',
-              border: 'none',
-              fontWeight: 600,
-            }}
+            className={clsx(
+              "flex items-center gap-2 h-8 px-4 rounded-lg text-[13px] font-semibold transition-all",
+              (isRunning || isStartingRun)
+                ? "bg-surface-hover text-zinc-500 cursor-not-allowed"
+                : "bg-node-trigger hover:bg-accent-hover text-white shadow-[0_0_12px_rgba(255,109,90,0.2)] hover:shadow-[0_0_20px_rgba(255,109,90,0.35)]"
+            )}
           >
             {(isRunning || isStartingRun) ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
-              <Play size={14} />
+              <Play size={14} className="fill-current" />
             )}
-            {isRunning ? 'Running…' : 'Run'}
-          </button>
-
-          {/* Save button */}
-          <button
-            onClick={handleSave}
-            style={{
-              ...topBtnStyle,
-              ...(saveStatus === 'saved'
-                ? { color: 'var(--color-success)', borderColor: 'var(--color-success)' }
-                : {}),
-            }}
-          >
-            {saveStatus === 'saving' ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : saveStatus === 'saved' ? (
-              <CheckCircle2 size={14} />
-            ) : (
-              <Save size={14} />
-            )}
-            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : 'Save'}
+            {isRunning ? 'Running…' : 'Execute'}
           </button>
         </div>
       </div>
 
-      {/* Validation errors banner */}
+      {/* ── Validation Errors Banner (below header) ── */}
       {showErrors && validationErrors.length > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 16px',
-            background: 'rgba(248, 113, 113, 0.1)',
-            borderBottom: '1px solid rgba(248, 113, 113, 0.3)',
-            fontSize: 13,
-            color: 'var(--color-error)',
-            flexShrink: 0,
-          }}
-        >
-          <AlertTriangle size={14} />
-          <span style={{ fontWeight: 600 }}>
-            {validationErrors.length} validation {validationErrors.length === 1 ? 'error' : 'errors'}:
+        <div className="flex items-center gap-2.5 px-4 py-2 bg-red-500/8 border-b border-red-500/20 text-[12px] text-red-400 shrink-0">
+          <AlertTriangle size={14} className="shrink-0" />
+          <span className="font-medium shrink-0">
+            {validationErrors.length} {validationErrors.length === 1 ? 'error' : 'errors'}
           </span>
-          <span style={{ color: 'var(--color-text-secondary)' }}>
-            {validationErrors.slice(0, 3).map((e) => e.message).join(' · ')}
-            {validationErrors.length > 3 && ` · +${validationErrors.length - 3} more`}
+          <span className="text-red-300/80 truncate">
+            {validationErrors.slice(0, 2).map((e) => e.message).join(' · ')}
+            {validationErrors.length > 2 && ` +${validationErrors.length - 2} more`}
           </span>
           <button
             onClick={() => setShowErrors(false)}
-            style={{
-              marginLeft: 'auto',
-              background: 'none',
-              border: 'none',
-              color: 'var(--color-text-muted)',
-              cursor: 'pointer',
-              fontSize: 16,
-            }}
+            className="ml-auto text-red-400/60 hover:text-red-300 p-0.5"
           >
-            ×
+            <XCircle size={14} />
           </button>
         </div>
       )}
 
-      {/* Main area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Palette */}
-        {isPaletteOpen && <NodePalette />}
-
-        {/* Canvas */}
-        <div ref={reactFlowWrapper} style={{ flex: 1 }}>
-          <ReactFlow
-            nodes={nodes.map((n) => ({
-              ...n,
-              style: errorNodeIds.has(n.id)
-                ? { outline: '2px solid var(--color-error)', outlineOffset: 2, borderRadius: 'var(--radius-lg)' }
-                : undefined,
-            }))}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={(_, node) => selectNode(node)}
-            onPaneClick={() => selectNode(null)}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultEdgeOptions={{
-              animated: true,
-              type: 'deletable',
-              style: { stroke: 'var(--color-border-hover)', strokeWidth: 2 },
-            }}
-            deleteKeyCode={['Backspace', 'Delete']}
-            fitView
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background gap={20} size={1} color="var(--color-border)" />
-            <Controls
-              style={{
-                background: 'var(--color-surface)',
-                borderRadius: 'var(--radius-sm)',
-              }}
-            />
-          </ReactFlow>
+      {/* ── Main Content Area ── */}
+      <div className="flex-1 flex min-h-0">
+        {/* Left: Node Palette (n8n-style left panel) */}
+        <div
+          className={clsx(
+            "n8n-palette-panel h-full border-r border-[#2e2e33] bg-surface transition-all duration-300 overflow-hidden shrink-0",
+            isPaletteOpen ? "w-65" : "w-0 border-r-0"
+          )}
+        >
+          <NodePalette />
         </div>
 
-        {/* Properties panel */}
-        <PropertiesPanel />
+        {/* Center: Canvas + Execution Panel stacked vertically */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          {/* Canvas Area */}
+          <div className="flex-1 relative min-h-0" ref={reactFlowWrapper}>
+            <ReactFlow
+              nodes={nodes.map((n) => ({
+                ...n,
+                style: errorNodeIds.has(n.id)
+                  ? { outline: '2px solid var(--color-error)', outlineOffset: 4, borderRadius: '0.75rem' }
+                  : undefined,
+              }))}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={(_, node) => selectNode(node)}
+              onNodeDoubleClick={(_, node) => {
+                const { setSettingsNodeId } = useWorkflowStore.getState();
+                setSettingsNodeId(node.id);
+              }}
+              onPaneClick={() => selectNode(null)}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              defaultEdgeOptions={{
+                type: 'deletable',
+                style: { stroke: '#3a3a40', strokeWidth: 1.5 },
+              }}
+              deleteKeyCode={['Backspace', 'Delete']}
+              fitView
+              fitViewOptions={{ maxZoom: 1 }}
+              proOptions={{ hideAttribution: true }}
+              className="n8n-canvas"
+              colorMode="dark"
+            >
+              <Background gap={24} size={1.5} color="#27272a" />
+              <Controls
+                className="n8n-controls"
+                position="bottom-left"
+                showInteractive={false}
+              />
+              <MiniMap
+                nodeColor={() => '#3a3a40'}
+                maskColor="rgba(24,24,27,0.85)"
+                className="n8n-minimap"
+                position="bottom-right"
+                pannable
+                zoomable
+              />
+            </ReactFlow>
+
+            {/* Properties Panel — slides over canvas from right */}
+            {isPropertiesPanelOpen && <PropertiesPanel />}
+          </div>
+
+          {/* Bottom: Execution Panel */}
+          <ExecutionPanel
+            isOpen={isExecutionPanelOpen}
+            onToggle={() => setIsExecutionPanelOpen(prev => !prev)}
+          />
+        </div>
       </div>
-
-
     </div>
   );
 }
-
-const topBtnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  padding: '6px 12px',
-  background: 'var(--color-surface-hover)',
-  border: '1px solid var(--color-border)',
-  borderRadius: 'var(--radius-sm)',
-  color: 'var(--color-text-primary)',
-  cursor: 'pointer',
-  fontSize: 13,
-};
