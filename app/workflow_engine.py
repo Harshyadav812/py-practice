@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class WorkflowEngine:
     """Drop-in replacement that preserves the existing constructor API."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         workflow: WorkflowPayload,
         session: Session | None = None,
@@ -69,6 +69,10 @@ class WorkflowEngine:
     @property
     def start_node_name(self) -> str | None:
         return self.graph.trigger_node_name
+
+    def rename_node(self, current_name: str, new_name: str) -> None:
+        """Rename a node — delegates to the graph."""
+        self.graph.rename_node(current_name, new_name)
 
     async def run_stream(self) -> AsyncGenerator[str, None]:
         async for event in self._executor.run_stream():

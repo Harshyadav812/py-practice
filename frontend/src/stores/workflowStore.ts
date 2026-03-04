@@ -55,6 +55,69 @@ interface WorkflowState {
   deserializeFromPayload: (data: Record<string, unknown>) => void;
 }
 
+/**
+ * Recursively rename $ variable references in node parameters.
+ *
+ * Handles:
+ *   $'Old Name'.prop  →  $'New Name'.prop
+ *   $OldName.prop     →  $NewName.prop
+ *   $OldName['prop']  →  $NewName['prop']
+ */
+function renameInParameters(
+  params: Record<string, unknown>,
+  oldName: string,
+  newName: string,
+): Record<string, unknown> {
+  let changed = false;
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(params)) {
+    const updated = renameInValue(value, oldName, newName);
+    if (updated !== value) changed = true;
+    result[key] = updated;
+  }
+
+  return changed ? result : params;
+}
+
+function renameInValue(value: unknown, oldName: string, newName: string): unknown {
+  if (typeof value === 'string') {
+    if (!value.includes('$') || !value.includes(oldName)) return value;
+
+    let result = value;
+
+    // Quoted: $'Old Name' → $'New Name'
+    result = result.replaceAll(`$'${oldName}'`, `$'${newName}'`);
+    result = result.replaceAll(`$"${oldName}"`, `$"${newName}"`);
+
+    // Unquoted: $OldName. or $OldName[ (only if no spaces in name)
+    if (!oldName.includes(' ')) {
+      // Replace $OldName followed by . or [ or end-of-string
+      const escaped = oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\$${escaped}(?=[.\\[\\s,)}\r\n]|$)`, 'g');
+      result = result.replace(regex, `$${newName}`);
+    }
+
+    return result === value ? value : result;
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const result = value.map(item => {
+      const updated = renameInValue(item, oldName, newName);
+      if (updated !== item) changed = true;
+      return updated;
+    });
+    return changed ? result : value;
+  }
+
+  if (value && typeof value === 'object') {
+    return renameInParameters(value as Record<string, unknown>, oldName, newName);
+  }
+
+  return value;
+}
+
 let nodeIdCounter = 1;
 export function generateNodeId() {
   return `node_${Date.now()}_${nodeIdCounter++}`;
@@ -153,13 +216,37 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         .map(n => n.data.label);
       const uniqueName = getUniqueNodeName(newName, otherNames);
 
-      const newNodes = state.nodes.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, label: uniqueName } } : n
-      );
+      // Find the old name before we rename
+      const targetNode = state.nodes.find(n => n.id === nodeId);
+      if (!targetNode) return {};
+      const oldName = targetNode.data.label;
+
+      // If name didn't change, bail
+      if (oldName === uniqueName) return {};
+
+      // Update the renamed node's label
+      const newNodes = state.nodes.map((n) => {
+        if (n.id === nodeId) {
+          return { ...n, data: { ...n.data, label: uniqueName } };
+        }
+
+        // Update $ references in OTHER nodes' parameters
+        const updatedParams = renameInParameters(
+          n.data.parameters || {},
+          oldName,
+          uniqueName,
+        );
+        if (updatedParams !== n.data.parameters) {
+          return { ...n, data: { ...n.data, parameters: updatedParams } };
+        }
+        return n;
+      });
+
       const newSelectedNode =
         state.selectedNode?.id === nodeId
           ? newNodes.find((n) => n.id === nodeId) || null
           : state.selectedNode;
+
       return { nodes: newNodes, selectedNode: newSelectedNode };
     }),
 

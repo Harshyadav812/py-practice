@@ -15,6 +15,8 @@ export function PropertiesPanel() {
   const [isRawMode, setIsRawMode] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
+  // state to capture the name when the input is focused:
+  const [originalName, setOriginalName] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<{ id: string; name: string; type: string }[]>([]);
 
   // Fetch user's credentials for the credential dropdown
@@ -115,10 +117,17 @@ export function PropertiesPanel() {
           <div className="flex-1 min-w-0">
             <input
               value={data.label}
+              onFocus={() => setOriginalName(data.label)}
               onChange={(e) => updateNodeData(settingsNode.id, { label: e.target.value })}
-              onBlur={(e) => renameNode(settingsNode.id, e.target.value)}
-              className="w-full bg-transparent text-[14px] font-semibold text-zinc-100 outline-none border-none p-0 focus:text-white"
-              spellCheck={false}
+              onBlur={(e) => {
+                if (originalName && originalName !== e.target.value) {
+                  // Revert the label to the old name first, then let renameNode do it properly
+                  updateNodeData(settingsNode.id, { label: originalName });
+                  renameNode(settingsNode.id, e.target.value);
+                }
+                setOriginalName(null);
+              }}
+              className="n8n-input"
             />
             {def && (
               <div className="text-[11px] text-zinc-500 mt-0.5 truncate">

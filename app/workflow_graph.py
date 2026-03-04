@@ -6,16 +6,19 @@ Built once from a ``WorkflowPayload``, reusable across executions.
 
 from __future__ import annotations
 
+import contextlib
 from collections import deque
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from app.tasks import rename_node_in_parameters
 
 if TYPE_CHECKING:
-    from app.schemas.nodes import ConnectionTarget, Node, WorkflowPayload
+    from app.schemas.nodes import Node, WorkflowPayload
 
 
 class WorkflowGraph:
-    """Immutable DAG representation of a workflow."""
+    """DAG representation of a workflow."""
 
     def __init__(self, workflow: WorkflowPayload) -> None:
         self._workflow = workflow
@@ -198,3 +201,82 @@ class WorkflowGraph:
                     queue.append(parent)
 
         return ancestors
+
+        # ------------------------------------------------------------------
+
+    # Mutation: rename
+    # ------------------------------------------------------------------
+
+    def rename_node(self, current_name: str, new_name: str) -> None:
+        """
+        Rename a node and update all references throughout the graph.
+
+        Updates:
+          1. The node object itself (node.name)
+          2. The internal node map
+          3. Source-side connection keys
+          4. Target-side connection references (ConnectionTarget.node)
+          5. $ variable references in ALL nodes' parameters
+          6. Adjacency lists (rebuilt)
+
+        Raises ``ValueError`` if *current_name* doesn't exist or
+        *new_name* already exists.
+        """
+        if current_name == new_name:
+            return
+
+        if current_name not in self._node_map:
+            msg = f"Cannot rename: node '{current_name}' not found"
+            raise ValueError(msg)
+
+        if new_name in self._node_map:
+            msg = f"Cannot rename: node '{new_name}' already exists"
+            raise ValueError(msg)
+
+        if not new_name or not new_name.strip():
+            msg = "Node name cannot be empty"
+            raise ValueError(msg)
+
+        # --- 1. Rename the node object ---
+        node = self._node_map[current_name]
+        node.name = new_name
+
+        # --- 2. Update node map ---
+        self._node_map[new_name] = node
+        del self._node_map[current_name]
+
+        # --- 3. Update source-side connection keys ---
+        if current_name in self._connections:
+            self._connections[new_name] = self._connections.pop(current_name)
+
+        # --- 4. Update target-side connection references ---
+        for _source, connection_types in self._connections.items():
+            for _conn_type, output_lists in connection_types.items():
+                for output_list in output_lists:
+                    for target in output_list:
+                        if target.node == current_name:
+                            target.node = new_name
+
+        # --- 5. Update $ references in ALL nodes' parameters ---
+        for node_obj in self._node_map.values():
+            node_obj.parameters = rename_node_in_parameters(
+                node_obj.parameters, current_name, new_name
+            )
+
+        # --- 6. Rebuild adjacency (cheap — O(edges)) ---
+        self._adjacency = self._build_adjacency()
+        self._reverse_adjacency = self._build_reverse_adjacency()
+
+        # Invalidate cached properties so they recompute
+        for attr in ("trigger_node_name", "in_degrees"):
+            with contextlib.suppress(AttributeError):
+                delattr(self, attr)
+
+    def rename_node_in_pindata(
+        self, pin_data: dict[str, Any] | None, current_name: str, new_name: str
+    ) -> dict[str, Any] | None:
+        """Rename a node key in pinData (if it exists)."""
+        if not pin_data or current_name not in pin_data:
+            return pin_data
+        pin_data[new_name] = pin_data.pop(current_name)
+        return pin_data

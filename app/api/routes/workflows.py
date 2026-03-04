@@ -17,6 +17,7 @@ from app.schemas.workflow import (
     WorkflowUpdate,
 )
 from app.workflow_engine import WorkflowEngine
+from app.workflow_graph import WorkflowGraph
 
 router = APIRouter()
 
@@ -192,6 +193,52 @@ async def run_workflow(
     final_state = await workflow_engine.run()
 
     return ExecuteResponse(status="success", results=final_state)
+
+
+@router.patch("/{workflow_id}/nodes/rename")
+def rename_workflow_node(
+    workflow_id: UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+    body: dict,  # {"current_name": "...", "new_name": "..."}
+):
+    """Rename a node in a saved workflow, updating all references."""
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow or workflow.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    current_name = body.get("current_name", "").strip()
+    new_name = body.get("new_name", "").strip()
+
+    if not current_name or not new_name:
+        raise HTTPException(
+            status_code=400, detail="Both current_name and new_name are required"
+        )
+
+    try:
+        # Parse, rename, serialize back
+        payload = WorkflowPayload.model_validate(workflow.data)
+        graph = WorkflowGraph(payload)
+        graph.rename_node(current_name, new_name)
+
+        # Also rename in pinData if present
+        if payload.pinData:
+            graph.rename_node_in_pindata(payload.pinData, current_name, new_name)
+
+        # Serialize the updated graph back to the workflow data
+        updated_data = payload.model_dump()
+        updated_data["nodes"] = [
+            {**n, "name": n["name"]}
+            for n in [node.model_dump() for node in payload.nodes]
+        ]
+        workflow.data = updated_data
+        session.add(workflow)
+        session.commit()
+        session.refresh(workflow)
+        return {"ok": True, "new_name": new_name}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # not being used anymore

@@ -137,7 +137,7 @@ class WorkflowExecutor:
         # Inject decrypted credentials into parameters
         node_credentials = clean_node.get("credentials")
         if node_credentials and self.credential_loader:
-            for _cred_type, cred_ref in node_credentials.items():
+            for _cred_type, cred_ref in node_credentials.items():  # noqa: PERF102
                 cred_id = cred_ref.get("id") if isinstance(cred_ref, dict) else cred_ref
                 if cred_id:
                     decrypted = self.load_credential(str(cred_id))

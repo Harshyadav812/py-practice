@@ -3,6 +3,7 @@ import asyncio
 import ipaddress
 import re
 import socket
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -311,6 +312,59 @@ def resolve_all_variables(workflow_results, task):
         return re.sub(pattern, resolve_template_string, task)
 
     return task
+
+
+def rename_node_in_parameters(
+    parameters: dict | list | str | Any,
+    old_name: str,
+    new_name: str,
+) -> dict | list | str | Any:
+    """
+    Recursively rename $-variable references from old_name to new_name.
+
+    Handles all reference styles used in sentient_flow:
+      - $OldName.prop         → $NewName.prop          (simple dot)
+      - $'Old Name'.prop      → $'New Name'.prop       (quoted dot)
+      - $OldName['prop']      → $NewName['prop']       (bracket)
+      - $'Old Name'['prop']   → $'New Name'['prop']    (quoted bracket)
+
+    Works on dicts, lists, and strings recursively.
+    """
+    if isinstance(parameters, dict):
+        return {
+            k: rename_node_in_parameters(v, old_name, new_name)
+            for k, v in parameters.items()
+        }
+
+    if isinstance(parameters, list):
+        return [
+            rename_node_in_parameters(item, old_name, new_name) for item in parameters
+        ]
+
+    if isinstance(parameters, str) and "$" in parameters and old_name in parameters:
+        # Pattern 1: $'Old Name' (quoted — with single or double quotes)
+        # Must be done BEFORE unquoted to avoid partial matches
+
+        # Quoted references: $'Old Name' or $"Old Name"
+        # We replace the name inside the quotes
+        for quote in ("'", '"'):
+            old_ref = f"${quote}{old_name}{quote}"
+            new_ref = f"${quote}{new_name}{quote}"
+            parameters = parameters.replace(old_ref, new_ref)
+
+        # Pattern 2: $OldName (unquoted — only works when name has no spaces)
+        # Must be careful not to replace inside already-quoted references
+        # or partial matches like $OldNameExtra
+        if " " not in old_name:
+            # Use word-boundary-aware replacement:
+            # Match $OldName followed by a dot, bracket, or end-of-string
+            # but NOT followed by more word characters (to avoid partial match)
+            pattern = re.escape(f"${old_name}") + r"(?=\.|$|\[|,|\s|\)|\})"
+            parameters = re.sub(pattern, f"${new_name}", parameters)
+
+        return parameters
+
+    return parameters
 
 
 # NEW TASK FUNCTIONS
