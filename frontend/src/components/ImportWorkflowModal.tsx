@@ -28,8 +28,8 @@ export function ImportWorkflowModal({ onClose, onSuccess, open }: ImportModalPro
       const parsed = JSON.parse(jsonStr);
 
       // Basic validation
-      let name = parsed.name || 'Imported Workflow';
-      let data = parsed.data || parsed; // fallback if they just pasted the graph
+      const name = parsed.name || 'Imported Workflow';
+      const data = parsed.data || parsed; // fallback if they just pasted the graph
 
       await createWorkflow({
         name,
@@ -39,6 +39,7 @@ export function ImportWorkflowModal({ onClose, onSuccess, open }: ImportModalPro
       setJsonStr('');
       onSuccess();
       onClose();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message || 'Invalid JSON format');
     } finally {

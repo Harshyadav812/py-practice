@@ -99,7 +99,7 @@ export function CanvasPage() {
         })
         .catch(console.error);
     }
-  }, [id]);
+  }, [id, clear, setWorkflowId, deserializeFromPayload, setWorkflowName]);
 
   // Clear validation when nodes/edges change
   useEffect(() => {
@@ -107,7 +107,7 @@ export function CanvasPage() {
       setShowErrors(false);
       setValidationErrors([]);
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, showErrors]);
 
   // Keyboard shortcut: Ctrl+S to save
   useEffect(() => {

@@ -118,14 +118,34 @@ export function PropertiesPanel() {
             <input
               value={data.label}
               onFocus={() => setOriginalName(data.label)}
-              onChange={(e) => updateNodeData(settingsNode.id, { label: e.target.value })}
+              onChange={(e) =>
+                updateNodeData(settingsNode.id, { label: e.target.value })
+              }
               onBlur={(e) => {
-                if (originalName && originalName !== e.target.value) {
-                  // Revert the label to the old name first, then let renameNode do it properly
-                  updateNodeData(settingsNode.id, { label: originalName });
-                  renameNode(settingsNode.id, e.target.value);
-                }
+                const finalName = e.target.value.trim();
+                const capturedOldName = originalName;
                 setOriginalName(null);
+
+                // Nothing to rename
+                if (!capturedOldName || !finalName) {
+                  // Revert to original if empty
+                  if (!finalName && capturedOldName) {
+                    updateNodeData(settingsNode.id, { label: capturedOldName });
+                  }
+                  return;
+                }
+
+                // Name didn't change
+                if (capturedOldName === finalName) return;
+
+                // 1. Revert label back to old name so renameNode reads it correctly
+                updateNodeData(settingsNode.id, { label: capturedOldName });
+
+                // 2. Use setTimeout to ensure the revert is committed to Zustand
+                //    before renameNode reads targetNode.data.label
+                setTimeout(() => {
+                  renameNode(settingsNode.id, finalName);
+                }, 0);
               }}
               className="n8n-input"
             />

@@ -235,10 +235,10 @@ def rename_workflow_node(
         session.add(workflow)
         session.commit()
         session.refresh(workflow)
-        return {"ok": True, "new_name": new_name}
-
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    else:
+        return {"ok": True, "new_name": new_name}
 
 
 # not being used anymore

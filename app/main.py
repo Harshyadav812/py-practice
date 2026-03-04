@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import auth, credentials, executions, workflows
+from app.core.config import settings
 
 
 @asynccontextmanager
@@ -15,7 +16,10 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-origins = ["http://localhost:5173", "http://localhost:5174"]
+
+origins = settings.cors_origins
+if isinstance(origins, str):
+    origins = [origin.strip() for origin in origins.split(",")]
 
 app.add_middleware(
     CORSMiddleware,  # ty:ignore[invalid-argument-type]

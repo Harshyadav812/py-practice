@@ -56,54 +56,93 @@ interface WorkflowState {
 }
 
 /**
- * Recursively rename $ variable references in node parameters.
+ * Rename all $-variable references in a string.
+ *
+ * Uses regex with capture groups to match the FULL token, then
+ * reconstructs the replacement manually (avoiding $' special replacement).
  *
  * Handles:
- *   $'Old Name'.prop  →  $'New Name'.prop
- *   $OldName.prop     →  $NewName.prop
- *   $OldName['prop']  →  $NewName['prop']
+ *   $'Old Name'.prop      →  $'New Name'.prop
+ *   $"Old Name".prop      →  $"New Name".prop
+ *   $OldName.prop         →  $NewName.prop
+ *   $OldName['key']       →  $NewName['key']
+ *   $OldName[0]           →  $NewName[0]
  */
-function renameInParameters(
-  params: Record<string, unknown>,
+function renameRefsInString(
+  value: string,
   oldName: string,
   newName: string,
-): Record<string, unknown> {
-  let changed = false;
-  const result: Record<string, unknown> = {};
+): string {
+  if (!value.includes('$') || !value.includes(oldName)) return value;
 
-  for (const [key, value] of Object.entries(params)) {
-    const updated = renameInValue(value, oldName, newName);
-    if (updated !== value) changed = true;
-    result[key] = updated;
-  }
+  // This regex matches a complete $-variable reference:
+  //   $'Quoted Name'  OR  $"Quoted Name"  OR  $SimpleName
+  // followed by zero or more property chains (.prop, ['key'], [0])
+  //
+  // Capture groups:
+  //   group 1: single-quoted name  (e.g. Result Message)
+  //   group 2: double-quoted name  (e.g. Result Message)
+  //   group 3: unquoted name       (e.g. ResultMessage)
+  const pattern =
+    /\$(?:'([^']+)'|"([^"]+)"|([\w-]+))(?:(?:\.[\w-]+)|(?:\[['"][^'"]+['"]\])|(?:\[\d+\]))*/g;
 
-  return changed ? result : params;
+  const result = value.replace(
+    pattern,
+    (
+      fullMatch: string,
+      singleQ: string | undefined,
+      doubleQ: string | undefined,
+      unquoted: string | undefined,
+    ) => {
+      const capturedName = singleQ ?? doubleQ ?? unquoted ?? '';
+
+      // Only replace if the captured name EXACTLY matches the old name
+      if (capturedName !== oldName) return fullMatch;
+
+      // Extract the property chain (everything after the root reference)
+      // e.g. from "$'Result Message'.text[0]" extract ".text[0]"
+      let rootLen: number;
+      if (singleQ !== undefined) {
+        rootLen = `$'${oldName}'`.length;
+      } else if (doubleQ !== undefined) {
+        rootLen = `$"${oldName}"`.length;
+      } else {
+        rootLen = `$${oldName}`.length;
+      }
+      const propertyChain = fullMatch.slice(rootLen);
+
+      // Rebuild with new name — always quote if name has spaces
+      let newRoot: string;
+      if (singleQ !== undefined) {
+        newRoot = `$'${newName}'`;
+      } else if (doubleQ !== undefined) {
+        newRoot = `$"${newName}"`;
+      } else if (newName.includes(' ')) {
+        // Old name had no spaces (unquoted), but new name does — add quotes
+        newRoot = `$'${newName}'`;
+      } else {
+        newRoot = `$${newName}`;
+      }
+
+      return newRoot + propertyChain;
+    },
+  );
+
+  return result === value ? value : result;
 }
 
-function renameInValue(value: unknown, oldName: string, newName: string): unknown {
+function renameInValue(
+  value: unknown,
+  oldName: string,
+  newName: string,
+): unknown {
   if (typeof value === 'string') {
-    if (!value.includes('$') || !value.includes(oldName)) return value;
-
-    let result = value;
-
-    // Quoted: $'Old Name' → $'New Name'
-    result = result.replaceAll(`$'${oldName}'`, `$'${newName}'`);
-    result = result.replaceAll(`$"${oldName}"`, `$"${newName}"`);
-
-    // Unquoted: $OldName. or $OldName[ (only if no spaces in name)
-    if (!oldName.includes(' ')) {
-      // Replace $OldName followed by . or [ or end-of-string
-      const escaped = oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`\\$${escaped}(?=[.\\[\\s,)}\r\n]|$)`, 'g');
-      result = result.replace(regex, `$${newName}`);
-    }
-
-    return result === value ? value : result;
+    return renameRefsInString(value, oldName, newName);
   }
 
   if (Array.isArray(value)) {
     let changed = false;
-    const result = value.map(item => {
+    const result = value.map((item) => {
       const updated = renameInValue(item, oldName, newName);
       if (updated !== item) changed = true;
       return updated;
@@ -111,8 +150,15 @@ function renameInValue(value: unknown, oldName: string, newName: string): unknow
     return changed ? result : value;
   }
 
-  if (value && typeof value === 'object') {
-    return renameInParameters(value as Record<string, unknown>, oldName, newName);
+  if (value !== null && typeof value === 'object') {
+    let changed = false;
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const updated = renameInValue(v, oldName, newName);
+      if (updated !== v) changed = true;
+      result[k] = updated;
+    }
+    return changed ? result : value;
   }
 
   return value;
@@ -211,33 +257,32 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   renameNode: (nodeId, newName) =>
     set((state) => {
-      const otherNames = state.nodes
-        .filter(n => n.id !== nodeId)
-        .map(n => n.data.label);
-      const uniqueName = getUniqueNodeName(newName, otherNames);
-
-      // Find the old name before we rename
-      const targetNode = state.nodes.find(n => n.id === nodeId);
+      const targetNode = state.nodes.find((n) => n.id === nodeId);
       if (!targetNode) return {};
+
       const oldName = targetNode.data.label;
 
-      // If name didn't change, bail
+      const otherNames = state.nodes
+        .filter((n) => n.id !== nodeId)
+        .map((n) => n.data.label);
+      const uniqueName = getUniqueNodeName(newName, otherNames);
+
+      // No-op if the name didn't actually change
       if (oldName === uniqueName) return {};
 
-      // Update the renamed node's label
       const newNodes = state.nodes.map((n) => {
         if (n.id === nodeId) {
           return { ...n, data: { ...n.data, label: uniqueName } };
         }
 
-        // Update $ references in OTHER nodes' parameters
-        const updatedParams = renameInParameters(
-          n.data.parameters || {},
-          oldName,
-          uniqueName,
-        );
-        if (updatedParams !== n.data.parameters) {
-          return { ...n, data: { ...n.data, parameters: updatedParams } };
+        // Walk every OTHER node's parameters and update $ references
+        const currentParams = (n.data.parameters || {}) as Record<string, unknown>;
+        const updatedParams = renameInValue(currentParams, oldName, uniqueName);
+        if (updatedParams !== currentParams) {
+          return {
+            ...n,
+            data: { ...n.data, parameters: updatedParams as Record<string, unknown> },
+          };
         }
         return n;
       });

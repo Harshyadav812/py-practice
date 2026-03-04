@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440
     database_url: str
     encryption_key: SecretStr
+    cors_origins: str | list[str] = ["http://localhost:5173", "http://localhost:5174"]
 
 
 settings = Settings()  # loaded from .env file  # ty:ignore[missing-argument]

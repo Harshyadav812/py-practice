@@ -111,7 +111,7 @@ class WorkflowGraph:
     def in_degrees(self) -> dict[str, int]:
         """In-degree for every node (how many incoming connections)."""
         deg: dict[str, int] = dict.fromkeys(self._node_map, 0)
-        for _source, connections in self._connections.items():
+        for connections in self._connections.values():
             for connection_type in connections.values():
                 for output_index_list in connection_type:
                     for target in output_index_list:
@@ -207,7 +207,7 @@ class WorkflowGraph:
     # Mutation: rename
     # ------------------------------------------------------------------
 
-    def rename_node(self, current_name: str, new_name: str) -> None:
+    def rename_node(self, current_name: str, new_name: str) -> None:  # noqa: C901
         """
         Rename a node and update all references throughout the graph.
 
@@ -237,33 +237,33 @@ class WorkflowGraph:
             msg = "Node name cannot be empty"
             raise ValueError(msg)
 
-        # --- 1. Rename the node object ---
+        # Rename the node object
         node = self._node_map[current_name]
         node.name = new_name
 
-        # --- 2. Update node map ---
+        #  Update node map
         self._node_map[new_name] = node
         del self._node_map[current_name]
 
-        # --- 3. Update source-side connection keys ---
+        # Update source-side connection keys
         if current_name in self._connections:
             self._connections[new_name] = self._connections.pop(current_name)
 
-        # --- 4. Update target-side connection references ---
-        for _source, connection_types in self._connections.items():
-            for _conn_type, output_lists in connection_types.items():
+        # Update target-side connection references
+        for connection_types in self._connections.values():
+            for output_lists in connection_types.values():
                 for output_list in output_lists:
                     for target in output_list:
                         if target.node == current_name:
                             target.node = new_name
 
-        # --- 5. Update $ references in ALL nodes' parameters ---
+        # Update $ references in ALL nodes' parameters
         for node_obj in self._node_map.values():
             node_obj.parameters = rename_node_in_parameters(
                 node_obj.parameters, current_name, new_name
             )
 
-        # --- 6. Rebuild adjacency (cheap — O(edges)) ---
+        # Rebuild adjacency (cheap — O(edges))
         self._adjacency = self._build_adjacency()
         self._reverse_adjacency = self._build_reverse_adjacency()
 

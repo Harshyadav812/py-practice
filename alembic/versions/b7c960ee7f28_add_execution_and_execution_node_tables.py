@@ -1,4 +1,5 @@
-"""add execution and execution_node tables
+"""
+add execution and execution_node tables
 
 Revision ID: b7c960ee7f28
 Revises: 1309f2c716b6
@@ -6,7 +7,7 @@ Create Date: 2026-02-27 22:19:06.467793
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 import sqlmodel
@@ -16,9 +17,9 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b7c960ee7f28"
-down_revision: Union[str, Sequence[str], None] = "1309f2c716b6"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "1309f2c716b6"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

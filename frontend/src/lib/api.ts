@@ -28,6 +28,7 @@ async function request<T>(
       errorMessage = error.detail;
     } else if (Array.isArray(error.detail)) {
       // Handle FastAPI Pydantic validation errors
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       errorMessage = error.detail.map((err: any) => err.msg).join(', ');
     }
 
@@ -51,6 +52,7 @@ export async function login(email: string, password: string) {
     if (typeof error.detail === 'string') {
       errorMessage = error.detail;
     } else if (Array.isArray(error.detail)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       errorMessage = error.detail.map((err: any) => err.msg).join(', ');
     }
 

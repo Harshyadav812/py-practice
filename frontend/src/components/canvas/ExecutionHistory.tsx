@@ -29,15 +29,17 @@ export function ExecutionHistory({ workflowId }: ExecutionHistoryProps) {
   }, [isOpen]);
 
   // Refresh list whenever the panel opens or execution statuses change
+  const nodeStatusesLength = Object.keys(nodeStatuses).length;
   useEffect(() => {
     if (isOpen && workflowId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(true);
       getExecutions(workflowId)
         .then(setExecutions)
         .catch(() => setExecutions([]))
         .finally(() => setLoading(false));
     }
-  }, [isOpen, workflowId, Object.keys(nodeStatuses).length]);
+  }, [isOpen, workflowId, nodeStatusesLength]);
 
   const handleSelectExecution = async (exec: ExecutionData) => {
     if (!workflowId) return;

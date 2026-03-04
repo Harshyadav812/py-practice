@@ -1,3 +1,4 @@
+# ruff: noqa: C901, PLR0911, PLR0912, PLR0913, ASYNC109, TRY301
 import ast
 import asyncio
 import ipaddress
@@ -163,12 +164,11 @@ async def do_http(
                 content_type = response.headers.get("content-type", "")
                 if "application/json" in content_type:
                     return response.json()
-                else:
-                    return {
-                        "status_code": response.status_code,
-                        "text": response.text,
-                        "headers": dict(response.headers),
-                    }
+                return {
+                    "status_code": response.status_code,
+                    "text": response.text,
+                    "headers": dict(response.headers),
+                }
 
             except httpx.TimeoutException as e:
                 last_exception = e
@@ -179,7 +179,7 @@ async def do_http(
                     await asyncio.sleep(retry_delay)
                 else:
                     msg = f"Request to {url} timed out after {retries + 1} attempts"
-                    raise ValueError(msg)
+                    raise ValueError(msg) from e
 
             except Exception as e:
                 last_exception = e
@@ -189,7 +189,7 @@ async def do_http(
                     )
                     await asyncio.sleep(retry_delay)
                 else:
-                    raise last_exception
+                    raise last_exception from e
     return None
 
 
@@ -505,7 +505,7 @@ def do_safe_eval(expression: str, input_data):
                 pass  # Method calls like "hello".upper() — attribute already validated
             else:
                 msg = "Blocked expression: complex function calls are not allowed"
-                raise ValueError(msg)
+                raise TypeError(msg)
 
         # Validate Name references
         if (
@@ -550,7 +550,7 @@ LLM_DEFAULT_MODELS = {
 }
 
 
-async def do_llm_call(  # noqa: C901, PLR0912, PLR0913
+async def do_llm_call(
     provider: str,
     api_key: str,
     messages: list[dict],

@@ -165,7 +165,7 @@ class WorkflowExecutor:
         independent of the HTTP connection lifecycle.
         """
         queue: asyncio.Queue[str | None] = asyncio.Queue()
-        asyncio.create_task(self._execute_workflow(queue))
+        self._loop_task = asyncio.create_task(self._execute_workflow(queue))
         try:
             while True:
                 event = await queue.get()
@@ -385,7 +385,7 @@ class WorkflowExecutor:
                     emit({"type": "node_start", "node": current_node_name})
 
                     # Brief visual delay for demo/UX purposes
-                    await asyncio.sleep(0.3)
+                    # await asyncio.sleep(0.3)
 
                     try:
                         result = await asyncio.wait_for(

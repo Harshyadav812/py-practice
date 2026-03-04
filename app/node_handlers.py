@@ -1,6 +1,8 @@
 """
 Node Handlers - Maps node types to their execution logic.
 
+# ruff: noqa: ARG001
+
 Each handler:
 - Receives: (params, input_data, engine)
 - Returns: (result_data, output_index)
@@ -92,8 +94,8 @@ async def handle_delay(
     params: dict, input_data: Any, engine: WorkflowExecutor
 ) -> tuple[Any, int]:
     """Delay/Wait node. Capped at 300 seconds to prevent DoS."""
-    MAX_DELAY_SECONDS = 300
-    seconds = min(float(params.get("seconds", 0)), MAX_DELAY_SECONDS)
+    max_delay_seconds = 300
+    seconds = min(float(params.get("seconds", 0)), max_delay_seconds)
     seconds = max(seconds, 0)
     await asyncio.sleep(seconds)
     return f"Waited {seconds} seconds", 0
@@ -190,11 +192,12 @@ async def handle_code(
 
     try:
         result = do_safe_eval(expression, input_data)
-        return result, 0
     except Exception as e:
         if fallback is not None:
             return fallback, 0
         return {"error": str(e)}, 0
+    else:
+        return result, 0
 
 
 async def handle_loop(
